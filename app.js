@@ -207,11 +207,6 @@ function isLive(status)     { return LIVE_STATUSES.has(status); }
 const LS_MATCHES_KEY   = 'wc_matches_cache';
 const LS_STANDINGS_KEY = 'wc_standings_cache';
 
-// Cache TTLs in ms
-const TTL_LIVE    = 5  * 60 * 1000;  //  5 min — when a match is in progress
-const TTL_IDLE    = 60 * 60 * 1000;  // 60 min — between matches
-const TTL_STANDINGS = 10 * 60 * 1000; // 10 min
-
 class DataLayer {
   constructor() {
     this._apiBase     = 'https://api-football-v1.p.rapidapi.com/v3';
@@ -234,7 +229,7 @@ class DataLayer {
     const local = this._lsRead(LS_MATCHES_KEY);
 
     if (local) {
-      const ttl = local.data.some(m => isLive(m.status)) ? TTL_LIVE : TTL_IDLE;
+      const ttl = local.data.some(m => isLive(m.status)) ? CONFIG.CACHE_TTL_LIVE_MS : CONFIG.CACHE_TTL_IDLE_MS;
       if (!this._isStale(local.fetchedAt, ttl)) {
         this.source = 'local-cache';
         return local.data;
@@ -243,7 +238,7 @@ class DataLayer {
 
     // Try API
     try {
-      const raw     = await this._apiFetch(`/fixtures?league=${CONFIG.LEAGUE_ID}&season=${CONFIG.SEASON}`);
+      const raw     = await this._apiFetch(`/fixtures?league=${CONFIG.WC_LEAGUE_ID}&season=${CONFIG.WC_SEASON}`);
       const parsed  = this.parseResults(raw.response);
       this.source   = 'live';
       this._lsWrite(LS_MATCHES_KEY, parsed);
@@ -277,12 +272,12 @@ class DataLayer {
    */
   async fetchStandings() {
     const local = this._lsRead(LS_STANDINGS_KEY);
-    if (local && !this._isStale(local.fetchedAt, TTL_STANDINGS)) {
+    if (local && !this._isStale(local.fetchedAt, CONFIG.CACHE_TTL_STANDINGS)) {
       return local.data;
     }
 
     try {
-      const res  = await this._apiFetch(`/standings?league=${CONFIG.LEAGUE_ID}&season=${CONFIG.SEASON}`);
+      const res  = await this._apiFetch(`/standings?league=${CONFIG.WC_LEAGUE_ID}&season=${CONFIG.WC_SEASON}`);
       const data = res.response;
       this._lsWrite(LS_STANDINGS_KEY, data);
       return data;
@@ -329,7 +324,7 @@ class DataLayer {
     const res = await fetch(`${this._apiBase}${path}`, {
       headers: {
         'X-RapidAPI-Key':  CONFIG.RAPIDAPI_KEY,
-        'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com',
+        'X-RapidAPI-Host': CONFIG.RAPIDAPI_HOST,
       },
     });
     if (!res.ok) {
@@ -379,7 +374,7 @@ class DataLayer {
   }
 
   async _writeGistCache(parsedMatches) {
-    if (!CONFIG.GIST_ID || !CONFIG.GITHUB_TOKEN) return;
+    if (!CONFIG.GIST_ID || !CONFIG.GIST_PAT) return;
     const payload = { fetchedAt: Date.now(), matches: parsedMatches };
     await fetch(`${this._gistApiBase}/${CONFIG.GIST_ID}`, {
       method: 'PATCH',
@@ -394,7 +389,7 @@ class DataLayer {
 
   _gistHeaders() {
     const h = { Accept: 'application/vnd.github+json' };
-    if (CONFIG.GITHUB_TOKEN) h['Authorization'] = `Bearer ${CONFIG.GITHUB_TOKEN}`;
+    if (CONFIG.GIST_PAT) h['Authorization'] = `Bearer ${CONFIG.GIST_PAT}`;
     return h;
   }
 
@@ -694,7 +689,7 @@ class ScoringEngine {
   _scheduleRefresh() {
     clearTimeout(this._refreshTimer);
     const anyLive = this._matches.some(m => isLive(m.status));
-    const ttl     = anyLive ? TTL_LIVE : TTL_IDLE;
+    const ttl     = anyLive ? CONFIG.CACHE_TTL_LIVE_MS : CONFIG.CACHE_TTL_IDLE_MS;
     this._nextRefreshAt = Date.now() + ttl;
     this._refreshTimer  = setTimeout(async () => {
       await this._fetchAndRender();

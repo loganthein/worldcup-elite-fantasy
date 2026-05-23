@@ -5,7 +5,7 @@
  * Run once before first deploy:
  *   node seedGist.js
  *
- * Reads GITHUB_TOKEN, GIST_ID, and GIST_FILENAME from config.js.
+ * Reads GIST_PAT, GIST_ID, and GIST_FILENAME from config.js.
  * Writes an empty match cache to the Gist so the app has something to read
  * on first load before the API is called.
  *
@@ -32,12 +32,12 @@ function extract(key) {
   return m ? m[1] : null;
 }
 
-const GITHUB_TOKEN  = extract('GITHUB_TOKEN');
+const GIST_PAT  = extract('GIST_PAT');
 const GIST_ID       = extract('GIST_ID');
 const GIST_FILENAME = extract('GIST_FILENAME') || 'worldcup-matches.json';
 
-if (!GITHUB_TOKEN) {
-  console.error('ERROR: GITHUB_TOKEN is empty in config.js.');
+if (!GIST_PAT) {
+  console.error('ERROR: GIST_PAT is empty in config.js.');
   console.error('       Create a token at github.com/settings/tokens with the "gist" scope.');
   process.exit(1);
 }
@@ -66,7 +66,7 @@ const body = JSON.stringify({
   const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
     method:  'PATCH',
     headers: {
-      'Authorization': `Bearer ${GITHUB_TOKEN}`,
+      'Authorization': `Bearer ${GIST_PAT}`,
       'Accept':        'application/vnd.github+json',
       'Content-Type':  'application/json',
       'User-Agent':    'worldcup-elite-fantasy',
