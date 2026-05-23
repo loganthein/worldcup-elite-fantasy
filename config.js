@@ -11,30 +11,4 @@ const CONFIG = {
   CACHE_TTL_MS:   5 * 60 * 1000,
 };
 
-// ── Your fantasy league roster ─────────────────────────────────────────────────
-// Add one object per league participant.
-// picks[].position: G = Goalkeeper, D = Defender, M = Midfielder, F = Forward
-// picks[].name must match the player name returned by API-Football exactly.
-
-const ROSTER = [
-  {
-    teamName: 'Team Alpha',
-    picks: [
-      { name: 'Emiliano Martínez', position: 'G' },
-      { name: 'Achraf Hakimi',     position: 'D' },
-      { name: 'Pedri',             position: 'M' },
-      { name: 'Kylian Mbappé',     position: 'F' },
-      { name: 'Erling Haaland',    position: 'F' },
-    ],
-  },
-  {
-    teamName: 'Team Beta',
-    picks: [
-      { name: 'Alisson Becker',    position: 'G' },
-      { name: 'Virgil van Dijk',   position: 'D' },
-      { name: 'Jude Bellingham',   position: 'M' },
-      { name: 'Lionel Messi',      position: 'F' },
-      { name: 'Vinicius Junior',   position: 'F' },
-    ],
-  },
-];
+// Participants and scoring rules are defined in app.js.

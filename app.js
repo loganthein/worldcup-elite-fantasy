@@ -1,5 +1,5 @@
 /**
- * app.js — Scoring engine + data layer
+ * app.js — Core data structures, scoring engine, and data layer
  *
  * Data flow:
  *   1. Try GitHub Gist cache (fast, no quota cost).
@@ -9,59 +9,162 @@
  * Expects CONFIG to be defined by config.js loaded before this script.
  */
 
-// ── Scoring rules ──────────────────────────────────────────────────────────────
-// Adjust point values here to match your league's rules.
-const SCORING_RULES = {
-  // Outfield goals
-  goal_forward:    6,
-  goal_midfielder: 5,
-  goal_defender:   6,
-  goal_goalkeeper: 10,
+// ── Participants ───────────────────────────────────────────────────────────────
+// name → [team1, team2]
 
-  // Assists
-  assist:          3,
-
-  // Clean sheets (GK / DEF who plays full 90)
-  clean_sheet_gk:  6,
-  clean_sheet_def: 4,
-  clean_sheet_mid: 1,
-
-  // Saves (per 3 saves)
-  saves_per_3:     1,
-
-  // Cards
-  yellow_card:    -1,
-  red_card:       -3,
-
-  // Bonus / penalty
-  penalty_saved:   5,
-  penalty_missed: -2,
-  own_goal:       -2,
-
-  // Appearance (played at all)
-  appearance:      1,
-  // Appearance bonus for full 60+ minutes
-  full_game:       1,
+const PARTICIPANTS = {
+  Ashleigh: ['Brazil',      'Canada'],
+  Baker:    ['Germany',     'Croatia'],
+  Chad:     ['Japan',       'Paraguay'],
+  Jackie:   ['Morocco',     'Sweden'],
+  Jake:     ['Argentina',   'Australia'],
+  Joren:    ['Norway',      'Scotland'],
+  Keillor:  ['France',      'Uruguay'],
+  Kyle:     ['England',     'Senegal'],
+  Logan:    ['USA',         'Switzerland'],
+  Patrick:  ['Portugal',    'Austria'],
+  Sara:     ['Spain',       'Mexico'],
+  TJ:       ['Colombia',    'Turkey'],
+  'Tom Moran': ['Belgium',  'South Korea'],
+  Goon:     ['Netherlands', 'Ecuador'],
 };
 
-// Position string → scoring category
-const POSITION_MAP = {
-  G: 'goalkeeper',
-  D: 'defender',
-  M: 'midfielder',
-  F: 'forward',
+// ── Groups ─────────────────────────────────────────────────────────────────────
+
+const GROUPS = {
+  A: ['Mexico',      'South Korea', 'Czechia',    'South Africa'],
+  B: ['Switzerland', 'Canada',      'Bosnia',     'Qatar'],
+  C: ['Brazil',      'Morocco',     'Haiti',      'Scotland'],
+  D: ['USA',         'Paraguay',    'Australia',  'Turkey'],
+  E: ['Germany',     'Ecuador',     'Ivory Coast','Curacao'],
+  F: ['Netherlands', 'Japan',       'Sweden',     'Tunisia'],
+  G: ['Belgium',     'Egypt',       'Iran',       'New Zealand'],
+  H: ['Spain',       'Uruguay',     'Saudi Arabia','Cape Verde'],
+  I: ['France',      'Senegal',     'Norway',     'Iraq'],
+  J: ['Argentina',   'Austria',     'Algeria',    'Jordan'],
+  K: ['Portugal',    'Colombia',    'Congo',      'Uzbekistan'],
+  L: ['England',     'Croatia',     'Ghana',      'Panama'],
 };
+
+// ── Tiers ──────────────────────────────────────────────────────────────────────
+// Tier A: no win bonus. Tier B: +2 per group-stage win.
+
+const TIER_A = new Set([
+  'Spain', 'France', 'England', 'Brazil',
+  'Argentina', 'Portugal', 'Germany', 'Netherlands',
+]);
+
+// ── Scoring ────────────────────────────────────────────────────────────────────
+
+const SCORING = {
+  group_win:       2,   // + tier bonus if Tier B
+  group_win_bonus: 2,   // added for Tier B teams only
+  group_draw:      1,
+  group_advance:   3,   // advancing from group stage (any method)
+  round_of_32:     4,
+  round_of_16:     6,
+  quarterfinal:    8,
+  semifinal:       10,
+  champion:        15,
+};
+
+// ── Team flags ─────────────────────────────────────────────────────────────────
+
+const TEAM_FLAGS = {
+  // Group A
+  Mexico:         '🇲🇽',
+  'South Korea':  '🇰🇷',
+  Czechia:        '🇨🇿',
+  'South Africa': '🇿🇦',
+  // Group B
+  Switzerland:    '🇨🇭',
+  Canada:         '🇨🇦',
+  Bosnia:         '🇧🇦',
+  Qatar:          '🇶🇦',
+  // Group C
+  Brazil:         '🇧🇷',
+  Morocco:        '🇲🇦',
+  Haiti:          '🇭🇹',
+  Scotland:       '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  // Group D
+  USA:            '🇺🇸',
+  Paraguay:       '🇵🇾',
+  Australia:      '🇦🇺',
+  Turkey:         '🇹🇷',
+  // Group E
+  Germany:        '🇩🇪',
+  Ecuador:        '🇪🇨',
+  'Ivory Coast':  '🇨🇮',
+  Curacao:        '🇨🇼',
+  // Group F
+  Netherlands:    '🇳🇱',
+  Japan:          '🇯🇵',
+  Sweden:         '🇸🇪',
+  Tunisia:        '🇹🇳',
+  // Group G
+  Belgium:        '🇧🇪',
+  Egypt:          '🇪🇬',
+  Iran:           '🇮🇷',
+  'New Zealand':  '🇳🇿',
+  // Group H
+  Spain:          '🇪🇸',
+  Uruguay:        '🇺🇾',
+  'Saudi Arabia': '🇸🇦',
+  'Cape Verde':   '🇨🇻',
+  // Group I
+  France:         '🇫🇷',
+  Senegal:        '🇸🇳',
+  Norway:         '🇳🇴',
+  Iraq:           '🇮🇶',
+  // Group J
+  Argentina:      '🇦🇷',
+  Austria:        '🇦🇹',
+  Algeria:        '🇩🇿',
+  Jordan:         '🇯🇴',
+  // Group K
+  Portugal:       '🇵🇹',
+  Colombia:       '🇨🇴',
+  Congo:          '🇨🇬',
+  Uzbekistan:     '🇺🇿',
+  // Group L
+  England:        '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+  Croatia:        '🇭🇷',
+  Ghana:          '🇬🇭',
+  Panama:         '🇵🇦',
+};
+
+// ── Team name aliases ──────────────────────────────────────────────────────────
+// API-Football sometimes uses different names. Map their names → our names.
+
+const TEAM_ALIASES = {
+  'United States':          'USA',
+  'Korea Republic':         'South Korea',
+  "Côte d'Ivoire":          'Ivory Coast',
+  'Cote d\'Ivoire':         'Ivory Coast',
+  'Bosnia and Herzegovina': 'Bosnia',
+  'Bosnia & Herzegovina':   'Bosnia',
+  'DR Congo':               'Congo',
+  'Republic of Congo':      'Congo',
+  'Türkiye':                'Turkey',
+  'Czechia':                'Czechia',
+  'Czech Republic':         'Czechia',
+};
+
+/** Normalize a team name from API-Football to our canonical name. */
+function canonicalTeam(apiName) {
+  return TEAM_ALIASES[apiName] ?? apiName;
+}
 
 // ── Data layer ─────────────────────────────────────────────────────────────────
 
 class DataLayer {
   constructor() {
-    this._apiBase = 'https://api-football-v1.p.rapidapi.com/v3';
+    this._apiBase     = 'https://api-football-v1.p.rapidapi.com/v3';
     this._gistApiBase = 'https://api.github.com/gists';
-    this._source = null; // 'live' | 'cached' | 'error'
+    this._source      = null; // 'live' | 'cached' | 'error'
   }
 
-  /** Fetch match fixtures and player stats for the configured league/season. */
+  /** Fetch all fixtures for the configured league/season. */
   async getMatches() {
     // 1. Try Gist cache
     const cached = await this._readGistCache();
@@ -74,18 +177,14 @@ class DataLayer {
     try {
       const matches = await this._fetchFromAPI();
       this._source = 'live';
-      // 3. Update cache (fire-and-forget — don't block render)
       this._writeGistCache(matches).catch(console.warn);
       return matches;
     } catch (apiErr) {
       console.warn('API-Football fetch failed:', apiErr.message);
-
-      // Fall back to stale cache if we have one
       if (cached) {
         this._source = 'cached';
         return cached.matches;
       }
-
       this._source = 'error';
       throw new Error('No data available: API failed and no cache found.');
     }
@@ -93,40 +192,11 @@ class DataLayer {
 
   get source() { return this._source; }
 
-  // ── Private: API-Football ──────────────────────────────────────────────────
-
   async _fetchFromAPI() {
-    const fixtures = await this._apiFetch(
+    const res = await this._apiFetch(
       `/fixtures?league=${CONFIG.LEAGUE_ID}&season=${CONFIG.SEASON}`
     );
-
-    // Enrich finished/live fixtures with player stats (rate-limit friendly:
-    // fetch stats only for matches that are relevant — last 48 h or live)
-    const relevant = fixtures.response.filter(f => {
-      const status = f.fixture.status.short;
-      return ['FT', 'AET', 'PEN', '1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE'].includes(status);
-    });
-
-    const enriched = await Promise.allSettled(
-      relevant.map(f => this._fetchPlayerStats(f))
-    );
-
-    // Merge stats back; keep fixtures without stats as-is
-    enriched.forEach((result, i) => {
-      if (result.status === 'fulfilled') {
-        relevant[i].players = result.value;
-      }
-    });
-
-    return fixtures.response.map(f => {
-      const enrichedMatch = relevant.find(r => r.fixture.id === f.fixture.id);
-      return enrichedMatch || f;
-    });
-  }
-
-  async _fetchPlayerStats(fixture) {
-    const res = await this._apiFetch(`/fixtures/players?fixture=${fixture.fixture.id}`);
-    return res.response; // array of team player stats
+    return res.response;
   }
 
   async _apiFetch(path) {
@@ -142,8 +212,6 @@ class DataLayer {
     }
     return res.json();
   }
-
-  // ── Private: GitHub Gist cache ─────────────────────────────────────────────
 
   async _readGistCache() {
     if (!CONFIG.GIST_ID) return null;
@@ -188,9 +256,20 @@ class DataLayer {
 
 // ── Scoring engine ─────────────────────────────────────────────────────────────
 
+// Maps API-Football round strings → scoring keys
+const ROUND_SCORING = {
+  'round of 32':    'round_of_32',
+  'round of 16':    'round_of_16',
+  'quarter-finals': 'quarterfinal',
+  'semi-finals':    'semifinal',
+  'final':          'champion',
+};
+
+const FINISHED = new Set(['FT', 'AET', 'PEN']);
+
 class ScoringEngine {
   constructor() {
-    this._data = new DataLayer();
+    this._data    = new DataLayer();
     this._matches = [];
   }
 
@@ -208,14 +287,10 @@ class ScoringEngine {
   }
 
   /**
-   * Calculate fantasy points for a single player across all matches.
-   *
-   * @param {object} playerEntry  — { name, position, team }
-   * @returns {object}  { total, breakdown }
+   * Calculate fantasy points for a single team across all matches.
+   * Returns { total, breakdown } where breakdown is a label → pts map.
    */
-  scorePlayer(playerEntry) {
-    const { name, position } = playerEntry;
-    const pos = POSITION_MAP[position] || 'midfielder';
+  scoreTeam(teamName) {
     const breakdown = {};
     let total = 0;
 
@@ -225,53 +300,66 @@ class ScoringEngine {
       breakdown[key] = (breakdown[key] || 0) + pts;
     };
 
+    const isTierB  = !TIER_A.has(teamName);
+    let advancedFromGroup = false;
+
     for (const match of this._matches) {
-      if (!match.players) continue;
+      if (!FINISHED.has(match.fixture.status.short)) continue;
 
-      for (const team of match.players) {
-        const playerData = team.players.find(
-          p => p.player.name.toLowerCase() === name.toLowerCase()
-        );
-        if (!playerData) continue;
+      const home = canonicalTeam(match.teams.home.name);
+      const away = canonicalTeam(match.teams.away.name);
+      if (home !== teamName && away !== teamName) continue;
 
-        const s = playerData.statistics[0];
-        if (!s) continue;
+      const round      = (match.league.round || '').toLowerCase();
+      const isHome     = home === teamName;
+      const homeGoals  = match.goals.home ?? 0;
+      const awayGoals  = match.goals.away ?? 0;
+      const teamGoals  = isHome ? homeGoals : awayGoals;
+      const oppGoals   = isHome ? awayGoals : homeGoals;
+      const teamWon    = teamGoals > oppGoals;
+      const isDraw     = teamGoals === oppGoals;
 
-        const minutesPlayed = s.games.minutes || 0;
-        if (minutesPlayed === 0) continue;
-
-        add('appearance', SCORING_RULES.appearance);
-        if (minutesPlayed >= 60) add('full_game', SCORING_RULES.full_game);
-
-        const goals = s.goals.total || 0;
-        const goalKey = `goal_${pos}`;
-        add(goalKey, goals * (SCORING_RULES[goalKey] || SCORING_RULES.goal_midfielder));
-
-        const assists = s.goals.assists || 0;
-        add('assist', assists * SCORING_RULES.assist);
-
-        const ownGoals = s.goals.owngoals || 0;
-        add('own_goal', ownGoals * SCORING_RULES.own_goal);
-
-        if (s.goals.conceded === 0 && minutesPlayed >= 60) {
-          const csKey = `clean_sheet_${pos}`;
-          add(csKey, SCORING_RULES[csKey] || 0);
+      if (round.startsWith('group')) {
+        if (teamWon) {
+          add('group_win', SCORING.group_win);
+          if (isTierB) add('tier_b_bonus', SCORING.group_win_bonus);
+        } else if (isDraw) {
+          add('group_draw', SCORING.group_draw);
         }
+      } else {
+        // Knockout stage — check for advancement
+        advancedFromGroup = true;
 
-        const saves = s.goalkeeper?.saves || 0;
-        add('saves_per_3', Math.floor(saves / 3) * SCORING_RULES.saves_per_3);
-
-        const penSaved  = s.penalty?.saved   || 0;
-        const penMissed = s.penalty?.missed  || 0;
-        add('penalty_saved',  penSaved  * SCORING_RULES.penalty_saved);
-        add('penalty_missed', penMissed * SCORING_RULES.penalty_missed);
-
-        if (s.cards.yellow) add('yellow_card', SCORING_RULES.yellow_card);
-        if (s.cards.red)    add('red_card',    SCORING_RULES.red_card);
+        const scoreKey = ROUND_SCORING[round];
+        if (scoreKey && teamWon) {
+          // "champion" key means they won the final
+          add(scoreKey, SCORING[scoreKey]);
+        }
       }
     }
 
+    // Advance-from-group bonus: awarded once if team appears in any knockout match
+    if (advancedFromGroup) {
+      add('group_advance', SCORING.group_advance);
+    }
+
     return { total, breakdown };
+  }
+
+  /**
+   * Calculate total points for a participant (sum of both teams).
+   */
+  scoreParticipant(name) {
+    const teams = PARTICIPANTS[name];
+    if (!teams) return { total: 0, teams: [] };
+
+    const teamResults = teams.map(teamName => {
+      const { total, breakdown } = this.scoreTeam(teamName);
+      return { teamName, total, breakdown };
+    });
+
+    const total = teamResults.reduce((sum, t) => sum + t.total, 0);
+    return { total, teams: teamResults };
   }
 
   // ── Rendering helpers ──────────────────────────────────────────────────────
@@ -279,7 +367,6 @@ class ScoringEngine {
   _updateStatusBar() {
     const badge = document.getElementById('data-source');
     const ts    = document.getElementById('last-updated');
-
     badge.textContent = this._data.source === 'live' ? 'Live' : 'Cached';
     badge.className   = `badge ${this._data.source}`;
     ts.textContent    = `Updated ${new Date().toLocaleTimeString()}`;
@@ -287,16 +374,10 @@ class ScoringEngine {
 
   _renderMatches() {
     const container = document.getElementById('matches-container');
-    if (!this._matches.length) {
-      container.innerHTML = '<p class="loading">No matches yet.</p>';
-      return;
-    }
 
-    // Show most recent 12 matches (finished or live)
     const relevant = this._matches
-      .filter(m => ['FT','AET','PEN','1H','2H','HT','ET','BT','P','LIVE'].includes(
-        m.fixture.status.short
-      ))
+      .filter(m => FINISHED.has(m.fixture.status.short) ||
+        ['1H','2H','HT','ET','BT','P','LIVE'].includes(m.fixture.status.short))
       .slice(-12)
       .reverse();
 
@@ -309,10 +390,11 @@ class ScoringEngine {
     grid.className = 'matches-grid';
 
     for (const m of relevant) {
-      const isLive = !['FT','AET','PEN'].includes(m.fixture.status.short);
-      const card = document.createElement('div');
-      card.className = `match-card${isLive ? ' live' : ''}`;
-
+      const isLive    = !FINISHED.has(m.fixture.status.short);
+      const home      = canonicalTeam(m.teams.home.name);
+      const away      = canonicalTeam(m.teams.away.name);
+      const homeFlag  = TEAM_FLAGS[home] || '';
+      const awayFlag  = TEAM_FLAGS[away] || '';
       const homeGoals = m.goals.home ?? '–';
       const awayGoals = m.goals.away ?? '–';
       const dateStr   = new Date(m.fixture.date).toLocaleDateString();
@@ -320,11 +402,13 @@ class ScoringEngine {
         ? `<span class="status-live">${m.fixture.status.elapsed}'</span>`
         : m.fixture.status.long;
 
+      const card = document.createElement('div');
+      card.className = `match-card${isLive ? ' live' : ''}`;
       card.innerHTML = `
         <div class="teams">
-          <span>${m.teams.home.name}</span>
+          <span>${homeFlag} ${home}</span>
           <span class="score-line">${homeGoals} – ${awayGoals}</span>
-          <span>${m.teams.away.name}</span>
+          <span>${away} ${awayFlag}</span>
         </div>
         <div class="meta">
           <span>${dateStr}</span>
@@ -339,29 +423,9 @@ class ScoringEngine {
   }
 
   _renderLeaderboard() {
-    // ROSTER: define your league participants here.
-    // Each entry: { name, teamName, picks: [{ name, position }] }
-    // position: G = goalkeeper, D = defender, M = midfielder, F = forward
-    const roster = window.ROSTER || [];
-
-    const container = document.getElementById('leaderboard-container');
-
-    if (!roster.length) {
-      container.innerHTML = `
-        <p class="error-msg">
-          No roster defined. Add a <code>ROSTER</code> array to <code>config.js</code>.
-        </p>`;
-      return;
-    }
-
-    const standings = roster.map(participant => {
-      let total = 0;
-      const playerBreakdowns = participant.picks.map(pick => {
-        const result = this.scorePlayer(pick);
-        total += result.total;
-        return { ...pick, ...result };
-      });
-      return { ...participant, total, playerBreakdowns };
+    const standings = Object.keys(PARTICIPANTS).map(name => {
+      const result = this.scoreParticipant(name);
+      return { name, ...result };
     }).sort((a, b) => b.total - a.total);
 
     renderLeaderboard(standings);
@@ -370,7 +434,7 @@ class ScoringEngine {
   _renderError(msg) {
     const badge = document.getElementById('data-source');
     badge.textContent = 'Error';
-    badge.className = 'badge error';
+    badge.className   = 'badge error';
     document.getElementById('leaderboard-container').innerHTML =
       `<p class="error-msg">${msg}</p>`;
     document.getElementById('matches-container').innerHTML =

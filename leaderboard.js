@@ -1,13 +1,16 @@
 /**
  * leaderboard.js — Leaderboard DOM rendering
  *
- * Expects the scoring engine (app.js) to call renderLeaderboard(standings)
- * after scores are computed.
+ * Called by ScoringEngine._renderLeaderboard() with:
  *
  * standings: Array of {
- *   teamName: string,
- *   total: number,
- *   playerBreakdowns: Array<{ name, position, total, breakdown }>
+ *   name:  string,           — participant name
+ *   total: number,           — combined points
+ *   teams: Array<{
+ *     teamName:  string,
+ *     total:     number,
+ *     breakdown: { [label]: number }
+ *   }>
  * }
  */
 
@@ -25,13 +28,12 @@ function renderLeaderboard(standings) {
   table.setAttribute('role', 'table');
   table.setAttribute('aria-label', 'Fantasy leaderboard');
 
-  // Header
   table.innerHTML = `
     <thead>
       <tr>
         <th scope="col">#</th>
-        <th scope="col">Team</th>
-        <th scope="col">Best player</th>
+        <th scope="col">Participant</th>
+        <th scope="col">Teams</th>
         <th scope="col" style="text-align:right">Pts</th>
       </tr>
     </thead>
@@ -40,29 +42,24 @@ function renderLeaderboard(standings) {
   const tbody = document.createElement('tbody');
 
   standings.forEach((entry, idx) => {
-    const rank = idx + 1;
+    const rank      = idx + 1;
     const rankClass = rank <= 3 ? ` rank-${rank}` : '';
 
-    // Find top scorer in this team's picks
-    const top = [...entry.playerBreakdowns].sort((a, b) => b.total - a.total)[0];
-    const topStr = top
-      ? `${top.name} <span class="team-name">(${top.total} pts)</span>`
-      : '—';
+    const teamsStr = entry.teams.map(t => {
+      const flag = TEAM_FLAGS[t.teamName] || '';
+      return `${flag} ${t.teamName} <span class="team-pts">(${t.total})</span>`;
+    }).join(' &nbsp;·&nbsp; ');
 
     const row = document.createElement('tr');
     row.innerHTML = `
       <td class="rank${rankClass}">${rank}</td>
-      <td>
-        <span class="player-name">${escHtml(entry.teamName)}</span>
-      </td>
-      <td>${topStr}</td>
+      <td class="player-name">${escHtml(entry.name)}</td>
+      <td class="team-name">${teamsStr}</td>
       <td class="score">${entry.total}</td>
     `;
 
-    // Expandable breakdown on click
     row.style.cursor = 'pointer';
     row.addEventListener('click', () => toggleBreakdown(row, entry));
-
     tbody.appendChild(row);
   });
 
@@ -71,9 +68,9 @@ function renderLeaderboard(standings) {
 }
 
 function toggleBreakdown(row, entry) {
-  const existingDetail = row.nextElementSibling;
-  if (existingDetail && existingDetail.classList.contains('breakdown-row')) {
-    existingDetail.remove();
+  const existing = row.nextElementSibling;
+  if (existing && existing.classList.contains('breakdown-row')) {
+    existing.remove();
     return;
   }
 
@@ -82,28 +79,24 @@ function toggleBreakdown(row, entry) {
 
   const cell = document.createElement('td');
   cell.setAttribute('colspan', '4');
-  cell.style.padding = '0.5rem 1rem 1rem 3rem';
+  cell.style.cssText = 'padding: 0.25rem 1rem 1rem 3rem;';
 
-  const playerRows = entry.playerBreakdowns
-    .sort((a, b) => b.total - a.total)
-    .map(p => {
-      const bk = Object.entries(p.breakdown)
-        .map(([k, v]) => `${formatKey(k)}: ${v > 0 ? '+' : ''}${v}`)
-        .join(' · ');
-      return `
-        <div style="display:flex;justify-content:space-between;padding:0.25rem 0;font-size:0.85rem;border-bottom:1px solid var(--border)">
-          <span>
-            <strong>${escHtml(p.name)}</strong>
-            <span style="color:var(--text-muted);margin-left:0.5rem">${p.position}</span>
-            <span style="color:var(--text-muted);font-size:0.75rem;margin-left:0.75rem">${bk || 'No stats yet'}</span>
-          </span>
-          <span style="font-weight:700">${p.total}</span>
-        </div>
-      `;
-    })
-    .join('');
+  const teamBlocks = entry.teams.map(t => {
+    const flag = TEAM_FLAGS[t.teamName] || '';
+    const bk = Object.entries(t.breakdown)
+      .map(([k, v]) => `${formatKey(k)}: ${v > 0 ? '+' : ''}${v}`)
+      .join(' &nbsp;·&nbsp; ');
 
-  cell.innerHTML = playerRows;
+    return `
+      <div style="padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.85rem;">
+        <span style="font-weight:600">${flag} ${escHtml(t.teamName)}</span>
+        <span style="color:var(--text-muted); margin-left: 0.75rem">${bk || 'No results yet'}</span>
+        <span style="float:right; font-weight:700">${t.total} pts</span>
+      </div>
+    `;
+  }).join('');
+
+  cell.innerHTML = teamBlocks;
   detail.appendChild(cell);
   row.after(detail);
 }
@@ -119,7 +112,5 @@ function escHtml(str) {
 }
 
 function formatKey(key) {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase());
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
