@@ -32,7 +32,7 @@ function extract(key) {
   return m ? m[1] : null;
 }
 
-const GIST_PAT  = extract('GIST_PAT');
+const GIST_PAT = extract('GIST_PAT');
 const GIST_ID       = extract('GIST_ID');
 const GIST_FILENAME = extract('GIST_FILENAME') || 'worldcup-matches.json';
 

@@ -209,7 +209,7 @@ const LS_STANDINGS_KEY = 'wc_standings_cache';
 
 class DataLayer {
   constructor() {
-    this._apiBase     = 'https://api-football-v1.p.rapidapi.com/v3';
+    this._apiBase     = 'https://v3.football.api-sports.io';
     this._gistApiBase = 'https://api.github.com/gists';
     this.source       = null; // 'live' | 'local-cache' | 'gist-cache' | 'error'
   }
@@ -323,8 +323,7 @@ class DataLayer {
   async _apiFetch(path) {
     const res = await fetch(`${this._apiBase}${path}`, {
       headers: {
-        'X-RapidAPI-Key':  CONFIG.RAPIDAPI_KEY,
-        'X-RapidAPI-Host': CONFIG.RAPIDAPI_HOST,
+        'x-apisports-key': CONFIG.API_KEY,
       },
     });
     if (!res.ok) {

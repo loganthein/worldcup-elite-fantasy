@@ -7,13 +7,13 @@
 const CONFIG = {
 
   // ----------------------------------------------------------
-  //  API-FOOTBALL (via RapidAPI)
-  //  Sign up at: https://rapidapi.com
-  //  Search "API-Football", subscribe to the free plan.
-  //  Your key appears under "Header Parameters" → X-RapidAPI-Key
+  //  API-FOOTBALL (api-sports.io direct)
+  //  Sign up at: https://api-sports.io
+  //  Go to Dashboard → API Keys and copy your key.
+  //  Note: the free plan only covers seasons up to 2024.
+  //  A paid plan is required for live 2026 World Cup data.
   // ----------------------------------------------------------
-  RAPIDAPI_KEY: "YOUR_RAPIDAPI_KEY_HERE",
-  RAPIDAPI_HOST: "api-football-v1.p.rapidapi.com",
+  API_KEY: "YOUR_API_SPORTS_KEY_HERE",
 
   // World Cup identifiers — do not change these
   WC_LEAGUE_ID: 1,
