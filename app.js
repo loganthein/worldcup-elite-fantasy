@@ -133,71 +133,197 @@ const TEAM_FLAGS = {
   Panama:         '🇵🇦',
 };
 
-// ── Team name aliases ──────────────────────────────────────────────────────────
-// API-Football sometimes uses different names. Map their names → our names.
+// ── Team name map ──────────────────────────────────────────────────────────────
+// API-Football name → our canonical name.
+// Only entries that differ need to be listed.
 
-const TEAM_ALIASES = {
-  'United States':          'USA',
-  'Korea Republic':         'South Korea',
-  "Côte d'Ivoire":          'Ivory Coast',
-  'Cote d\'Ivoire':         'Ivory Coast',
-  'Bosnia and Herzegovina': 'Bosnia',
-  'Bosnia & Herzegovina':   'Bosnia',
-  'DR Congo':               'Congo',
-  'Republic of Congo':      'Congo',
-  'Türkiye':                'Turkey',
-  'Czechia':                'Czechia',
-  'Czech Republic':         'Czechia',
+const NAME_MAP = {
+  // USA
+  'United States':            'USA',
+  'United States of America': 'USA',
+  // South Korea
+  'Korea Republic':           'South Korea',
+  'Republic of Korea':        'South Korea',
+  // Ivory Coast
+  "Côte d'Ivoire":            'Ivory Coast',
+  "Cote d'Ivoire":            'Ivory Coast',
+  'Côte D\'Ivoire':           'Ivory Coast',
+  // Bosnia
+  'Bosnia and Herzegovina':   'Bosnia',
+  'Bosnia & Herzegovina':     'Bosnia',
+  // Congo
+  'DR Congo':                 'Congo',
+  'Congo DR':                 'Congo',
+  'Republic of Congo':        'Congo',
+  'Congo Republic':           'Congo',
+  // Turkey
+  'Türkiye':                  'Turkey',
+  // Czechia
+  'Czech Republic':           'Czechia',
+  // Scotland / England (sometimes returned as full GB names)
+  'Scotland (GB-SCT)':        'Scotland',
+  'England (GB-ENG)':         'England',
+  // Cape Verde
+  'Cape Verde Islands':       'Cape Verde',
+  // New Zealand
+  'New-Zealand':              'New Zealand',
+  // Saudi Arabia
+  'Saudi-Arabia':             'Saudi Arabia',
+  // South Africa
+  'South-Africa':             'South Africa',
+  // South Korea (alternate hyphenated form)
+  'South-Korea':              'South Korea',
 };
 
-/** Normalize a team name from API-Football to our canonical name. */
+/** Normalize an API-Football team name to our canonical name. */
 function canonicalTeam(apiName) {
-  return TEAM_ALIASES[apiName] ?? apiName;
+  return NAME_MAP[apiName] ?? apiName;
 }
 
+// ── Round parser ───────────────────────────────────────────────────────────────
+// Maps API-Football league.round strings → internal round keys.
+
+function parseRound(apiRound) {
+  const r = (apiRound || '').toLowerCase().trim();
+  if (r.startsWith('group'))   return 'group';
+  if (r === 'round of 32')     return 'round_of_32';
+  if (r === 'round of 16')     return 'round_of_16';
+  if (r === 'quarter-finals' || r === 'quarterfinals') return 'quarterfinal';
+  if (r === 'semi-finals'    || r === 'semifinals')    return 'semifinal';
+  if (r === 'final')           return 'final';
+  return r; // pass-through for anything unexpected
+}
+
+// ── Live status helpers ────────────────────────────────────────────────────────
+
+const FINISHED_STATUSES = new Set(['FT', 'AET', 'PEN']);
+const LIVE_STATUSES     = new Set(['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE']);
+
+function isFinished(status) { return FINISHED_STATUSES.has(status); }
+function isLive(status)     { return LIVE_STATUSES.has(status); }
+
 // ── Data layer ─────────────────────────────────────────────────────────────────
+
+const LS_MATCHES_KEY   = 'wc_matches_cache';
+const LS_STANDINGS_KEY = 'wc_standings_cache';
+
+// Cache TTLs in ms
+const TTL_LIVE    = 5  * 60 * 1000;  //  5 min — when a match is in progress
+const TTL_IDLE    = 60 * 60 * 1000;  // 60 min — between matches
+const TTL_STANDINGS = 10 * 60 * 1000; // 10 min
 
 class DataLayer {
   constructor() {
     this._apiBase     = 'https://api-football-v1.p.rapidapi.com/v3';
     this._gistApiBase = 'https://api.github.com/gists';
-    this._source      = null; // 'live' | 'cached' | 'error'
+    this.source       = null; // 'live' | 'local-cache' | 'gist-cache' | 'error'
   }
 
-  /** Fetch all fixtures for the configured league/season. */
-  async getMatches() {
-    // 1. Try Gist cache
-    const cached = await this._readGistCache();
-    if (cached && !this._isCacheStale(cached.fetchedAt)) {
-      this._source = 'cached';
-      return cached.matches;
-    }
+  // ── Public API ─────────────────────────────────────────────────────────────
 
-    // 2. Try API-Football
-    try {
-      const matches = await this._fetchFromAPI();
-      this._source = 'live';
-      this._writeGistCache(matches).catch(console.warn);
-      return matches;
-    } catch (apiErr) {
-      console.warn('API-Football fetch failed:', apiErr.message);
-      if (cached) {
-        this._source = 'cached';
-        return cached.matches;
+  /**
+   * Fetch all fixtures for the configured league/season.
+   * Returns an array of parsed match objects (see parseResults).
+   *
+   * Cache strategy:
+   *   1. localStorage — fresh if under TTL_LIVE (any live match) or TTL_IDLE
+   *   2. API-Football — on cache miss
+   *   3. Gist — silent fallback if API fails
+   */
+  async fetchMatches() {
+    const local = this._lsRead(LS_MATCHES_KEY);
+
+    if (local) {
+      const ttl = local.data.some(m => isLive(m.status)) ? TTL_LIVE : TTL_IDLE;
+      if (!this._isStale(local.fetchedAt, ttl)) {
+        this.source = 'local-cache';
+        return local.data;
       }
-      this._source = 'error';
-      throw new Error('No data available: API failed and no cache found.');
+    }
+
+    // Try API
+    try {
+      const raw     = await this._apiFetch(`/fixtures?league=${CONFIG.LEAGUE_ID}&season=${CONFIG.SEASON}`);
+      const parsed  = this.parseResults(raw.response);
+      this.source   = 'live';
+      this._lsWrite(LS_MATCHES_KEY, parsed);
+      this._writeGistCache(parsed).catch(console.warn); // fire-and-forget
+      return parsed;
+    } catch (err) {
+      console.warn('fetchMatches API error:', err.message);
+    }
+
+    // Fallback: stale localStorage
+    if (local) {
+      this.source = 'local-cache';
+      return local.data;
+    }
+
+    // Fallback: Gist
+    const gist = await this._readGistCache();
+    if (gist) {
+      this.source = 'gist-cache';
+      return gist;
+    }
+
+    this.source = 'error';
+    throw new Error('No match data available — API failed and no cache found.');
+  }
+
+  /**
+   * Fetch group standings for the configured league/season.
+   * Returns the raw API-Football standings response array.
+   * Cached in localStorage for TTL_STANDINGS.
+   */
+  async fetchStandings() {
+    const local = this._lsRead(LS_STANDINGS_KEY);
+    if (local && !this._isStale(local.fetchedAt, TTL_STANDINGS)) {
+      return local.data;
+    }
+
+    try {
+      const res  = await this._apiFetch(`/standings?league=${CONFIG.LEAGUE_ID}&season=${CONFIG.SEASON}`);
+      const data = res.response;
+      this._lsWrite(LS_STANDINGS_KEY, data);
+      return data;
+    } catch (err) {
+      console.warn('fetchStandings API error:', err.message);
+      return local ? local.data : null;
     }
   }
 
-  get source() { return this._source; }
-
-  async _fetchFromAPI() {
-    const res = await this._apiFetch(
-      `/fixtures?league=${CONFIG.LEAGUE_ID}&season=${CONFIG.SEASON}`
-    );
-    return res.response;
+  /**
+   * Convert raw API-Football fixture objects into our internal format:
+   *
+   * {
+   *   matchId:    number,
+   *   homeTeam:   string,   — canonical team name
+   *   awayTeam:   string,
+   *   homeScore:  number | null,
+   *   awayScore:  number | null,
+   *   status:     string,   — 'NS' | '1H' | 'HT' | '2H' | 'FT' | 'AET' | 'PEN' | …
+   *   statusLong: string,   — "Match Finished" | "First Half" | …
+   *   elapsed:    number | null,
+   *   round:      string,   — 'group' | 'round_of_32' | 'round_of_16' | 'quarterfinal' | 'semifinal' | 'final'
+   *   date:       string,   — ISO 8601
+   * }
+   */
+  parseResults(fixtures) {
+    return fixtures.map(f => ({
+      matchId:    f.fixture.id,
+      homeTeam:   canonicalTeam(f.teams.home.name),
+      awayTeam:   canonicalTeam(f.teams.away.name),
+      homeScore:  f.goals.home  ?? null,
+      awayScore:  f.goals.away  ?? null,
+      status:     f.fixture.status.short,
+      statusLong: f.fixture.status.long,
+      elapsed:    f.fixture.status.elapsed ?? null,
+      round:      parseRound(f.league.round),
+      date:       f.fixture.date,
+    }));
   }
+
+  // ── Private: HTTP ──────────────────────────────────────────────────────────
 
   async _apiFetch(path) {
     const res = await fetch(`${this._apiBase}${path}`, {
@@ -213,6 +339,27 @@ class DataLayer {
     return res.json();
   }
 
+  // ── Private: localStorage cache ────────────────────────────────────────────
+
+  _lsRead(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  _lsWrite(key, data) {
+    try {
+      localStorage.setItem(key, JSON.stringify({ fetchedAt: Date.now(), data }));
+    } catch {
+      // Ignore storage errors (private browsing quota, etc.)
+    }
+  }
+
+  // ── Private: Gist cache (cross-device fallback) ────────────────────────────
+
   async _readGistCache() {
     if (!CONFIG.GIST_ID) return null;
     try {
@@ -223,15 +370,17 @@ class DataLayer {
       const gist = await res.json();
       const file = gist.files[CONFIG.GIST_FILENAME];
       if (!file) return null;
-      return JSON.parse(file.content);
+      const payload = JSON.parse(file.content);
+      // Gist stores already-parsed matches
+      return payload.matches ?? null;
     } catch {
       return null;
     }
   }
 
-  async _writeGistCache(matches) {
+  async _writeGistCache(parsedMatches) {
     if (!CONFIG.GIST_ID || !CONFIG.GITHUB_TOKEN) return;
-    const payload = { fetchedAt: Date.now(), matches };
+    const payload = { fetchedAt: Date.now(), matches: parsedMatches };
     await fetch(`${this._gistApiBase}/${CONFIG.GIST_ID}`, {
       method: 'PATCH',
       headers: { ...this._gistHeaders(), 'Content-Type': 'application/json' },
@@ -249,33 +398,30 @@ class DataLayer {
     return h;
   }
 
-  _isCacheStale(fetchedAt) {
-    return Date.now() - fetchedAt > CONFIG.CACHE_TTL_MS;
+  _isStale(fetchedAt, ttl) {
+    return Date.now() - fetchedAt > ttl;
   }
 }
 
 // ── Scoring engine ─────────────────────────────────────────────────────────────
 
-// Maps API-Football round strings → scoring keys
-const ROUND_SCORING = {
-  'round of 32':    'round_of_32',
-  'round of 16':    'round_of_16',
-  'quarter-finals': 'quarterfinal',
-  'semi-finals':    'semifinal',
-  'final':          'champion',
+const ROUND_SCORE_KEY = {
+  round_of_32:  'round_of_32',
+  round_of_16:  'round_of_16',
+  quarterfinal: 'quarterfinal',
+  semifinal:    'semifinal',
+  final:        'champion',
 };
-
-const FINISHED = new Set(['FT', 'AET', 'PEN']);
 
 class ScoringEngine {
   constructor() {
     this._data    = new DataLayer();
-    this._matches = [];
+    this._matches = []; // parsed match objects
   }
 
   async init() {
     try {
-      this._matches = await this._data.getMatches();
+      this._matches = await this._data.fetchMatches();
     } catch (err) {
       this._renderError(err.message);
       return;
@@ -287,12 +433,14 @@ class ScoringEngine {
   }
 
   /**
-   * Calculate fantasy points for a single team across all matches.
-   * Returns { total, breakdown } where breakdown is a label → pts map.
+   * Calculate fantasy points for a single team across all finished matches.
+   * Returns { total, breakdown } — breakdown is label → cumulative pts.
    */
   scoreTeam(teamName) {
     const breakdown = {};
     let total = 0;
+    let advancedFromGroup = false;
+    const isTierB = !TIER_A.has(teamName);
 
     const add = (key, pts) => {
       if (!pts) return;
@@ -300,54 +448,38 @@ class ScoringEngine {
       breakdown[key] = (breakdown[key] || 0) + pts;
     };
 
-    const isTierB  = !TIER_A.has(teamName);
-    let advancedFromGroup = false;
+    for (const m of this._matches) {
+      if (!isFinished(m.status)) continue;
+      if (m.homeTeam !== teamName && m.awayTeam !== teamName) continue;
 
-    for (const match of this._matches) {
-      if (!FINISHED.has(match.fixture.status.short)) continue;
+      const teamScore = m.homeTeam === teamName ? m.homeScore : m.awayScore;
+      const oppScore  = m.homeTeam === teamName ? m.awayScore : m.homeScore;
+      const won  = teamScore > oppScore;
+      const draw = teamScore === oppScore;
 
-      const home = canonicalTeam(match.teams.home.name);
-      const away = canonicalTeam(match.teams.away.name);
-      if (home !== teamName && away !== teamName) continue;
-
-      const round      = (match.league.round || '').toLowerCase();
-      const isHome     = home === teamName;
-      const homeGoals  = match.goals.home ?? 0;
-      const awayGoals  = match.goals.away ?? 0;
-      const teamGoals  = isHome ? homeGoals : awayGoals;
-      const oppGoals   = isHome ? awayGoals : homeGoals;
-      const teamWon    = teamGoals > oppGoals;
-      const isDraw     = teamGoals === oppGoals;
-
-      if (round.startsWith('group')) {
-        if (teamWon) {
+      if (m.round === 'group') {
+        if (won) {
           add('group_win', SCORING.group_win);
           if (isTierB) add('tier_b_bonus', SCORING.group_win_bonus);
-        } else if (isDraw) {
+        } else if (draw) {
           add('group_draw', SCORING.group_draw);
         }
       } else {
-        // Knockout stage — check for advancement
+        // First knockout appearance = advanced from group
         advancedFromGroup = true;
-
-        const scoreKey = ROUND_SCORING[round];
-        if (scoreKey && teamWon) {
-          // "champion" key means they won the final
-          add(scoreKey, SCORING[scoreKey]);
-        }
+        const scoreKey = ROUND_SCORE_KEY[m.round];
+        if (scoreKey && won) add(scoreKey, SCORING[scoreKey]);
       }
     }
 
-    // Advance-from-group bonus: awarded once if team appears in any knockout match
-    if (advancedFromGroup) {
-      add('group_advance', SCORING.group_advance);
-    }
+    if (advancedFromGroup) add('group_advance', SCORING.group_advance);
 
     return { total, breakdown };
   }
 
   /**
    * Calculate total points for a participant (sum of both teams).
+   * Returns { total, teams: [{ teamName, total, breakdown }] }
    */
   scoreParticipant(name) {
     const teams = PARTICIPANTS[name];
@@ -358,8 +490,10 @@ class ScoringEngine {
       return { teamName, total, breakdown };
     });
 
-    const total = teamResults.reduce((sum, t) => sum + t.total, 0);
-    return { total, teams: teamResults };
+    return {
+      total: teamResults.reduce((s, t) => s + t.total, 0),
+      teams: teamResults,
+    };
   }
 
   // ── Rendering helpers ──────────────────────────────────────────────────────
@@ -367,8 +501,10 @@ class ScoringEngine {
   _updateStatusBar() {
     const badge = document.getElementById('data-source');
     const ts    = document.getElementById('last-updated');
-    badge.textContent = this._data.source === 'live' ? 'Live' : 'Cached';
-    badge.className   = `badge ${this._data.source}`;
+
+    const labels = { live: 'Live', 'local-cache': 'Cached', 'gist-cache': 'Gist Cache' };
+    badge.textContent = labels[this._data.source] ?? this._data.source;
+    badge.className   = `badge ${this._data.source === 'live' ? 'live' : 'cached'}`;
     ts.textContent    = `Updated ${new Date().toLocaleTimeString()}`;
   }
 
@@ -376,8 +512,7 @@ class ScoringEngine {
     const container = document.getElementById('matches-container');
 
     const relevant = this._matches
-      .filter(m => FINISHED.has(m.fixture.status.short) ||
-        ['1H','2H','HT','ET','BT','P','LIVE'].includes(m.fixture.status.short))
+      .filter(m => isFinished(m.status) || isLive(m.status))
       .slice(-12)
       .reverse();
 
@@ -390,25 +525,23 @@ class ScoringEngine {
     grid.className = 'matches-grid';
 
     for (const m of relevant) {
-      const isLive    = !FINISHED.has(m.fixture.status.short);
-      const home      = canonicalTeam(m.teams.home.name);
-      const away      = canonicalTeam(m.teams.away.name);
-      const homeFlag  = TEAM_FLAGS[home] || '';
-      const awayFlag  = TEAM_FLAGS[away] || '';
-      const homeGoals = m.goals.home ?? '–';
-      const awayGoals = m.goals.away ?? '–';
-      const dateStr   = new Date(m.fixture.date).toLocaleDateString();
-      const statusStr = isLive
-        ? `<span class="status-live">${m.fixture.status.elapsed}'</span>`
-        : m.fixture.status.long;
+      const live      = isLive(m.status);
+      const homeFlag  = TEAM_FLAGS[m.homeTeam] || '';
+      const awayFlag  = TEAM_FLAGS[m.awayTeam] || '';
+      const homeGoals = m.homeScore ?? '–';
+      const awayGoals = m.awayScore ?? '–';
+      const dateStr   = new Date(m.date).toLocaleDateString();
+      const statusStr = live
+        ? `<span class="status-live">${m.elapsed}'</span>`
+        : m.statusLong;
 
       const card = document.createElement('div');
-      card.className = `match-card${isLive ? ' live' : ''}`;
+      card.className = `match-card${live ? ' live' : ''}`;
       card.innerHTML = `
         <div class="teams">
-          <span>${homeFlag} ${home}</span>
+          <span>${homeFlag} ${m.homeTeam}</span>
           <span class="score-line">${homeGoals} – ${awayGoals}</span>
-          <span>${away} ${awayFlag}</span>
+          <span>${m.awayTeam} ${awayFlag}</span>
         </div>
         <div class="meta">
           <span>${dateStr}</span>
@@ -423,18 +556,17 @@ class ScoringEngine {
   }
 
   _renderLeaderboard() {
-    const standings = Object.keys(PARTICIPANTS).map(name => {
-      const result = this.scoreParticipant(name);
-      return { name, ...result };
-    }).sort((a, b) => b.total - a.total);
+    const standings = Object.keys(PARTICIPANTS).map(name => ({
+      name,
+      ...this.scoreParticipant(name),
+    })).sort((a, b) => b.total - a.total);
 
     renderLeaderboard(standings);
   }
 
   _renderError(msg) {
-    const badge = document.getElementById('data-source');
-    badge.textContent = 'Error';
-    badge.className   = 'badge error';
+    document.getElementById('data-source').textContent = 'Error';
+    document.getElementById('data-source').className   = 'badge error';
     document.getElementById('leaderboard-container').innerHTML =
       `<p class="error-msg">${msg}</p>`;
     document.getElementById('matches-container').innerHTML =
