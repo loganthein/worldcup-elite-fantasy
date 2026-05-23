@@ -49,6 +49,25 @@ const CONFIG = {
   // "https://loganthein.github.io/worldcup-fantasy"
   SITE_URL: "YOUR_GITHUB_PAGES_URL_HERE",
 
+
+  // ----------------------------------------------------------
+  //  PUSH NOTIFICATIONS (OneSignal — free tier)
+  //  1. Go to https://onesignal.com and create a free account.
+  //  2. Create a new app → Web → select "Typical Site".
+  //  3. Set your Site URL (your GitHub Pages URL above).
+  //  4. Copy the App ID from Settings > Keys & IDs.
+  //  5. Copy the REST API Key from the same page.
+  //
+  //  SECURITY NOTE: Both keys will be visible in page source.
+  //  This is acceptable for a private friend-group app —
+  //  the REST key can only send notifications to YOUR app's
+  //  subscribers; it cannot read data or access other apps.
+  //
+  //  Leave both as empty strings "" to disable notifications.
+  // ----------------------------------------------------------
+  ONESIGNAL_APP_ID:       "YOUR_ONESIGNAL_APP_ID_HERE",
+  ONESIGNAL_REST_API_KEY: "YOUR_ONESIGNAL_REST_API_KEY_HERE",
+
 };
 
 // Make available globally (loaded before app.js in HTML)

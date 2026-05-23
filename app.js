@@ -744,6 +744,11 @@ class ScoringEngine {
     this._renderGroups();
     this._renderFeed();
     this._renderLeaderboard();
+
+    // Fire push notifications for any new scoring events
+    if (typeof NotificationEngine !== 'undefined') {
+      NotificationEngine.checkAndNotify(this._matches);
+    }
   }
 
   /**
