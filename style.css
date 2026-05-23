@@ -178,19 +178,25 @@ a:hover { color: var(--red); }
   max-width: 860px;
   margin: 0 auto;
   padding: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
+.tab-nav::-webkit-scrollbar { display: none; }
+
 .tab-btn {
-  flex: 1;
+  flex: none;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-3);
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 500;
   letter-spacing: 0.02em;
-  padding: 0.6rem 1rem;
+  padding: 0.6rem 0.85rem;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   -webkit-tap-highlight-color: transparent;
@@ -206,7 +212,7 @@ a:hover { color: var(--red); }
 }
 
 @media (min-width: 480px) {
-  .tab-btn { flex: none; padding: 0.6rem 1.5rem; font-size: 0.83rem; }
+  .tab-btn { padding: 0.6rem 1.25rem; font-size: 0.83rem; }
 }
 
 /* ── Main content ─────────────────────────────────────────────────────────── */
@@ -605,6 +611,12 @@ a:hover { color: var(--red); }
   font-style: italic;
   font-size: 0.9rem;
   font-family: var(--font-mono);
+  animation: state-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes state-pulse {
+  0%, 100% { opacity: 0.9; }
+  50%       { opacity: 0.4; }
 }
 
 .error-msg {
@@ -1017,7 +1029,6 @@ a:hover { color: var(--red); }
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.75rem;
-  padding: 0.75rem;
 }
 
 @media (min-width: 580px) {
@@ -1117,7 +1128,7 @@ a:hover { color: var(--red); }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100px;
+  min-width: 0;
 }
 
 .owner-badge {
@@ -1154,6 +1165,14 @@ a:hover { color: var(--red); }
   flex-shrink: 0;
 }
 
+/* Hide owner badge on narrow screens to give team name room */
+@media (max-width: 400px) {
+  .owner-badge { display: none; }
+  .gt-stat { width: 1.3rem; padding: 0.4rem 0.2rem; font-size: 0.65rem; }
+  .gt-pts  { padding: 0.4rem 0.5rem 0.4rem 0.2rem; }
+  .gt-pos  { padding-left: 0.5rem; }
+}
+
 /* Eliminated team (rank 4, group complete) — dimmed via JS class */
 .group-row.is-eliminated .gt-tname,
 .group-row.is-eliminated .gt-stat,
@@ -1161,11 +1180,67 @@ a:hover { color: var(--red); }
   color: var(--text-3);
 }
 
-/* ── Activity feed ────────────────────────────────────────────────────────── */
-
-#panel-feed {
-  padding: 0.75rem;
+/* ── Biggest Mover card ───────────────────────────────────────────────────── */
+.bm-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.9rem;
+  box-shadow: var(--shadow-card);
+  flex-wrap: wrap;
 }
+
+.bm-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-3);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.bm-delta {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--green);
+  flex-shrink: 0;
+}
+
+.bm-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.bm-teams {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.bm-score {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--green);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ── Activity feed ────────────────────────────────────────────────────────── */
 
 .feed-item {
   background: var(--bg-card);
