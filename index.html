@@ -68,8 +68,10 @@
   <script src="app.js"></script>
   <script src="leaderboard.js"></script>
   <script>
-    initTabs();
-    new ScoringEngine().init();
+    document.addEventListener('DOMContentLoaded', function () {
+      initTabs();
+      new ScoringEngine().init();
+    });
   </script>
 
 </body>

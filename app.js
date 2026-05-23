@@ -673,8 +673,10 @@ class ScoringEngine {
         }),
       ]);
     } catch (err) {
-      this._renderError(err.message);
-      return;
+      console.warn('fetchMatches failed, rendering with empty data:', err.message);
+      this._matches  = [];
+      this._standings = null;
+      this._data.source = 'error';
     }
 
     this._updateHeader();
