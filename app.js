@@ -151,6 +151,7 @@ const NAME_MAP = {
   // Bosnia
   'Bosnia and Herzegovina':   'Bosnia',
   'Bosnia & Herzegovina':     'Bosnia',
+  'Bosnia-Herzegovina':       'Bosnia',   // ESPN
   // Congo
   'DR Congo':                 'Congo',
   'Congo DR':                 'Congo',
@@ -181,35 +182,54 @@ function canonicalTeam(apiName) {
 }
 
 // ── Round parser ───────────────────────────────────────────────────────────────
-// Maps API-Football league.round strings → internal round keys.
+// Maps ESPN season.slug strings → internal round keys.
 
-function parseRound(apiRound) {
-  const r = (apiRound || '').toLowerCase().trim();
-  if (r.startsWith('group'))   return 'group';
-  if (r === 'round of 32')     return 'round_of_32';
-  if (r === 'round of 16')     return 'round_of_16';
-  if (r === 'quarter-finals' || r === 'quarterfinals') return 'quarterfinal';
-  if (r === 'semi-finals'    || r === 'semifinals')    return 'semifinal';
-  if (r === 'final')           return 'final';
-  return r; // pass-through for anything unexpected
+function parseRound(slug) {
+  switch ((slug || '').toLowerCase()) {
+    case 'group-stage':   return 'group';
+    case 'round-of-32':   return 'round_of_32';
+    case 'round-of-16':   return 'round_of_16';
+    case 'quarterfinals': return 'quarterfinal';
+    case 'semifinals':    return 'semifinal';
+    case 'final':         return 'final';
+    default:              return slug;
+  }
 }
 
 // ── Live status helpers ────────────────────────────────────────────────────────
 
 const FINISHED_STATUSES = new Set(['FT', 'AET', 'PEN']);
-const LIVE_STATUSES     = new Set(['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE']);
+const LIVE_STATUSES     = new Set(['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE', 'STATUS_IN_PROGRESS', 'STATUS_HALFTIME']);
 
 function isFinished(status) { return FINISHED_STATUSES.has(status); }
 function isLive(status)     { return LIVE_STATUSES.has(status); }
 
+// ── ESPN status → internal status ─────────────────────────────────────────────
+
+function mapEspnStatus(espnName) {
+  switch (espnName) {
+    case 'STATUS_SCHEDULED':   return 'NS';
+    case 'STATUS_IN_PROGRESS': return 'LIVE';
+    case 'STATUS_HALFTIME':    return 'HT';
+    case 'STATUS_FINAL':       return 'FT';
+    case 'STATUS_FINAL_AET':   return 'AET';
+    case 'STATUS_FINAL_PEN':   return 'PEN';
+    case 'STATUS_POSTPONED':   return 'PST';
+    case 'STATUS_SUSPENDED':   return 'SUSP';
+    case 'STATUS_CANCELED':    return 'CANC';
+    default:                   return espnName;
+  }
+}
+
 // ── Data layer ─────────────────────────────────────────────────────────────────
 
-const LS_MATCHES_KEY   = 'wc_matches_cache';
-const LS_STANDINGS_KEY = 'wc_standings_cache';
+const LS_MATCHES_KEY = 'wc_matches_cache';
+
+// All 104 WC matches fall between these dates
+const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200';
 
 class DataLayer {
   constructor() {
-    this._apiBase     = 'https://v3.football.api-sports.io';
     this._gistApiBase = 'https://api.github.com/gists';
     this.source       = null; // 'live' | 'local-cache' | 'gist-cache' | 'error'
   }
@@ -217,35 +237,37 @@ class DataLayer {
   // ── Public API ─────────────────────────────────────────────────────────────
 
   /**
-   * Fetch all fixtures for the configured league/season.
-   * Returns an array of parsed match objects (see parseResults).
-   *
+   * Fetch all WC fixtures from ESPN (free, no auth).
    * Cache strategy:
-   *   1. localStorage — fresh if under TTL_LIVE (any live match) or TTL_IDLE
-   *   2. API-Football — on cache miss
-   *   3. Gist — silent fallback if API fails
+   *   1. localStorage — fresh if under TTL_LIVE (live match) or TTL_IDLE
+   *   2. ESPN API — on cache miss
+   *   3. Gist — silent fallback if ESPN fails
    */
   async fetchMatches() {
     const local = this._lsRead(LS_MATCHES_KEY);
 
     if (local) {
-      const ttl = local.data.some(m => isLive(m.status)) ? CONFIG.CACHE_TTL_LIVE_MS : CONFIG.CACHE_TTL_IDLE_MS;
+      const ttl = local.data.some(m => isLive(m.status))
+        ? CONFIG.CACHE_TTL_LIVE_MS
+        : CONFIG.CACHE_TTL_IDLE_MS;
       if (!this._isStale(local.fetchedAt, ttl)) {
         this.source = 'local-cache';
         return local.data;
       }
     }
 
-    // Try API
+    // Try ESPN
     try {
-      const raw     = await this._apiFetch(`/fixtures?league=${CONFIG.WC_LEAGUE_ID}&season=${CONFIG.WC_SEASON}`);
-      const parsed  = this.parseResults(raw.response);
-      this.source   = 'live';
+      const res = await fetch(ESPN_URL);
+      if (!res.ok) throw new Error(`ESPN ${res.status}`);
+      const json   = await res.json();
+      const parsed = this.parseResults(json.events || []);
+      this.source  = 'live';
       this._lsWrite(LS_MATCHES_KEY, parsed);
-      this._writeGistCache(parsed).catch(console.warn); // fire-and-forget
+      this._writeGistCache(parsed).catch(console.warn);
       return parsed;
     } catch (err) {
-      console.warn('fetchMatches API error:', err.message);
+      console.warn('fetchMatches ESPN error:', err.message);
     }
 
     // Fallback: stale localStorage
@@ -262,75 +284,57 @@ class DataLayer {
     }
 
     this.source = 'error';
-    throw new Error('No match data available — API failed and no cache found.');
+    throw new Error('No match data available.');
   }
 
   /**
-   * Fetch group standings for the configured league/season.
-   * Returns the raw API-Football standings response array.
-   * Cached in localStorage for TTL_STANDINGS.
-   */
-  async fetchStandings() {
-    const local = this._lsRead(LS_STANDINGS_KEY);
-    if (local && !this._isStale(local.fetchedAt, CONFIG.CACHE_TTL_STANDINGS)) {
-      return local.data;
-    }
-
-    try {
-      const res  = await this._apiFetch(`/standings?league=${CONFIG.WC_LEAGUE_ID}&season=${CONFIG.WC_SEASON}`);
-      const data = res.response;
-      this._lsWrite(LS_STANDINGS_KEY, data);
-      return data;
-    } catch (err) {
-      console.warn('fetchStandings API error:', err.message);
-      return local ? local.data : null;
-    }
-  }
-
-  /**
-   * Convert raw API-Football fixture objects into our internal format:
+   * Convert ESPN event objects into our internal match format:
+   * { matchId, homeTeam, awayTeam, homeScore, awayScore,
+   *   status, statusLong, elapsed, round, date }
    *
-   * {
-   *   matchId:    number,
-   *   homeTeam:   string,   — canonical team name
-   *   awayTeam:   string,
-   *   homeScore:  number | null,
-   *   awayScore:  number | null,
-   *   status:     string,   — 'NS' | '1H' | 'HT' | '2H' | 'FT' | 'AET' | 'PEN' | …
-   *   statusLong: string,   — "Match Finished" | "First Half" | …
-   *   elapsed:    number | null,
-   *   round:      string,   — 'group' | 'round_of_32' | 'round_of_16' | 'quarterfinal' | 'semifinal' | 'final'
-   *   date:       string,   — ISO 8601
-   * }
+   * Skips placeholder entries ("Group A Winner", etc.) that appear
+   * in knockout brackets before those teams are determined.
    */
-  parseResults(fixtures) {
-    return fixtures.map(f => ({
-      matchId:    f.fixture.id,
-      homeTeam:   canonicalTeam(f.teams.home.name),
-      awayTeam:   canonicalTeam(f.teams.away.name),
-      homeScore:  f.goals.home  ?? null,
-      awayScore:  f.goals.away  ?? null,
-      status:     f.fixture.status.short,
-      statusLong: f.fixture.status.long,
-      elapsed:    f.fixture.status.elapsed ?? null,
-      round:      parseRound(f.league.round),
-      date:       f.fixture.date,
-    }));
-  }
+  parseResults(events) {
+    const parsed = [];
 
-  // ── Private: HTTP ──────────────────────────────────────────────────────────
+    for (const e of events) {
+      const comp = e.competitions?.[0];
+      if (!comp) continue;
 
-  async _apiFetch(path) {
-    const res = await fetch(`${this._apiBase}${path}`, {
-      headers: {
-        'x-apisports-key': CONFIG.API_KEY,
-      },
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`API-Football ${res.status}: ${body}`);
+      const home = comp.competitors.find(c => c.homeAway === 'home');
+      const away = comp.competitors.find(c => c.homeAway === 'away');
+      if (!home || !away) continue;
+
+      const homeTeam = canonicalTeam(home.team.displayName);
+      const awayTeam = canonicalTeam(away.team.displayName);
+
+      // Skip placeholder bracket slots ("Group A Winner", "Round of 32 3 Winner", etc.)
+      if (!TEAM_FLAGS[homeTeam] || !TEAM_FLAGS[awayTeam]) continue;
+
+      const st     = comp.status.type;
+      const isPre  = st.state === 'pre';
+      const status = mapEspnStatus(st.name);
+
+      // Parse elapsed minutes from displayClock (e.g. "45'" → 45)
+      const clockStr = comp.status.displayClock || '';
+      const elapsed  = isPre ? null : (parseInt(clockStr) || null);
+
+      parsed.push({
+        matchId:    parseInt(e.id),
+        homeTeam,
+        awayTeam,
+        homeScore:  isPre ? null : parseInt(home.score),
+        awayScore:  isPre ? null : parseInt(away.score),
+        status,
+        statusLong: st.description || st.name,
+        elapsed,
+        round:      parseRound(e.season?.slug),
+        date:       e.date,
+      });
     }
-    return res.json();
+
+    return parsed;
   }
 
   // ── Private: localStorage cache ────────────────────────────────────────────
@@ -339,50 +343,36 @@ class DataLayer {
     try {
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
 
   _lsWrite(key, data) {
     try {
       localStorage.setItem(key, JSON.stringify({ fetchedAt: Date.now(), data }));
-    } catch {
-      // Ignore storage errors (private browsing quota, etc.)
-    }
+    } catch { /* quota / private mode */ }
   }
 
-  // ── Private: Gist cache (cross-device fallback) ────────────────────────────
+  // ── Private: Gist cache ────────────────────────────────────────────────────
 
   async _readGistCache() {
     if (!CONFIG.GIST_ID) return null;
     try {
-      const res = await fetch(`${this._gistApiBase}/${CONFIG.GIST_ID}`, {
-        headers: this._gistHeaders(),
-      });
+      const res  = await fetch(`${this._gistApiBase}/${CONFIG.GIST_ID}`, { headers: this._gistHeaders() });
       if (!res.ok) return null;
       const gist = await res.json();
       const file = gist.files[CONFIG.GIST_FILENAME];
       if (!file) return null;
-      const payload = JSON.parse(file.content);
-      // Gist stores already-parsed matches
-      return payload.matches ?? null;
-    } catch {
-      return null;
-    }
+      return JSON.parse(file.content).matches ?? null;
+    } catch { return null; }
   }
 
   async _writeGistCache(parsedMatches) {
     if (!CONFIG.GIST_ID || !CONFIG.GIST_PAT) return;
     const payload = { fetchedAt: Date.now(), matches: parsedMatches };
     await fetch(`${this._gistApiBase}/${CONFIG.GIST_ID}`, {
-      method: 'PATCH',
+      method:  'PATCH',
       headers: { ...this._gistHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        files: {
-          [CONFIG.GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) },
-        },
-      }),
+      body:    JSON.stringify({ files: { [CONFIG.GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } }),
     });
   }
 
@@ -664,16 +654,11 @@ class ScoringEngine {
 
   async _fetchAndRender() {
     try {
-      [this._matches, this._standings] = await Promise.all([
-        this._data.fetchMatches(),
-        this._data.fetchStandings().catch(err => {
-          console.warn('standings fetch failed, inferring from matches:', err.message);
-          return null;
-        }),
-      ]);
+      this._matches  = await this._data.fetchMatches();
+      this._standings = null; // inferred from knockout matches
     } catch (err) {
       console.warn('fetchMatches failed, rendering with empty data:', err.message);
-      this._matches  = [];
+      this._matches   = [];
       this._standings = null;
       this._data.source = 'error';
     }

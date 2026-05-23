@@ -2,11 +2,6 @@
 // See config.example.js for documentation on each key.
 
 const CONFIG = {
-  RAPIDAPI_KEY:          '4935100a31fe078e09fc7fbfff2cfc1b',
-  RAPIDAPI_HOST:         'api-football-v1.p.rapidapi.com',
-
-  WC_LEAGUE_ID:          1,
-  WC_SEASON:             2026,
 
   GIST_ID:               '935c07fbd48d4adff60dec07ba2f3218',
   GIST_PAT:              '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',

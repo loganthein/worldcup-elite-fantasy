@@ -6,19 +6,7 @@
 
 const CONFIG = {
 
-  // ----------------------------------------------------------
-  //  API-FOOTBALL (api-sports.io direct)
-  //  Sign up at: https://api-sports.io
-  //  Go to Dashboard → API Keys and copy your key.
-  //  Note: the free plan only covers seasons up to 2024.
-  //  A paid plan is required for live 2026 World Cup data.
-  // ----------------------------------------------------------
-  API_KEY: "YOUR_API_SPORTS_KEY_HERE",
-
-  // World Cup identifiers — do not change these
-  WC_LEAGUE_ID: 1,
-  WC_SEASON: 2026,
-
+  // Live match data comes from ESPN's public API — no key needed.
 
   // ----------------------------------------------------------
   //  GITHUB GIST (score cache + fallback data)
