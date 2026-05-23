@@ -403,7 +403,7 @@ class DataLayer {
   }
 }
 
-// ── Scoring engine ─────────────────────────────────────────────────────────────
+// ── Knockout round → scoring key ───────────────────────────────────────────────
 
 const ROUND_SCORE_KEY = {
   round_of_32:  'round_of_32',
@@ -413,15 +413,263 @@ const ROUND_SCORE_KEY = {
   final:        'champion',
 };
 
+// ── Group lookup helper ────────────────────────────────────────────────────────
+
+function findTeamGroup(teamName) {
+  const entry = Object.entries(GROUPS).find(([, teams]) => teams.includes(teamName));
+  return entry ? entry[0] : null;
+}
+
+// ── Advancement determination ──────────────────────────────────────────────────
+
+/**
+ * Returns a Set of canonical team names that advanced from the group stage.
+ * Prefers the standings API (authoritative); falls back to inferring from
+ * knockout matches if standings are unavailable.
+ *
+ * Format (2026 WC): top 2 from each of 12 groups = 24 teams,
+ * plus best 8 third-place teams by points > goalsDiff > goalsFor = 32 total.
+ */
+function determineAdvancedTeams(matches, standings) {
+  if (standings) {
+    try {
+      return _advancedFromStandings(standings);
+    } catch (e) {
+      console.warn('standings parse error, falling back to match inference:', e);
+    }
+  }
+  return _advancedFromMatches(matches);
+}
+
+function _advancedFromStandings(standings) {
+  // API-Football standings shape: standings[0].league.standings = [[groupA], [groupB], ...]
+  // or sometimes just an array of groups directly.
+  const raw = standings[0]?.league?.standings ?? standings;
+  if (!Array.isArray(raw)) throw new Error('unexpected standings shape');
+
+  const advanced   = new Set();
+  const thirdPlace = [];
+
+  for (const group of raw) {
+    const sorted = [...group].sort((a, b) => a.rank - b.rank);
+
+    if (sorted[0]) advanced.add(canonicalTeam(sorted[0].team.name));
+    if (sorted[1]) advanced.add(canonicalTeam(sorted[1].team.name));
+    if (sorted[2]) thirdPlace.push(sorted[2]);
+  }
+
+  // Best 8 third-place: points → goalsDiff → goalsFor
+  thirdPlace.sort((a, b) => {
+    if (b.points      !== a.points)      return b.points      - a.points;
+    if (b.goalsDiff   !== a.goalsDiff)   return b.goalsDiff   - a.goalsDiff;
+    return (b.all?.goals?.for ?? 0) - (a.all?.goals?.for ?? 0);
+  });
+
+  for (const t of thirdPlace.slice(0, 8)) {
+    advanced.add(canonicalTeam(t.team.name));
+  }
+
+  return advanced;
+}
+
+function _advancedFromMatches(matches) {
+  // Any team that appears in a knockout fixture advanced from groups
+  const advanced = new Set();
+  for (const m of matches) {
+    if (m.round !== 'group') {
+      advanced.add(m.homeTeam);
+      advanced.add(m.awayTeam);
+    }
+  }
+  return advanced;
+}
+
+// ── Per-team scorer ────────────────────────────────────────────────────────────
+
+/**
+ * Score a single team across all finished matches.
+ *
+ * @returns {{
+ *   wins:        number,
+ *   draws:       number,
+ *   bonuses:     number,  — tier-B win bonus + advance bonus
+ *   knockoutPts: number,
+ *   total:       number,
+ * }}
+ */
+function _scoreTeam(teamName, matches, advancedTeams) {
+  const isTierB = !TIER_A.has(teamName);
+  let wins = 0, draws = 0, tierBonus = 0, knockoutPts = 0;
+
+  for (const m of matches) {
+    if (!isFinished(m.status)) continue;
+    if (m.homeTeam !== teamName && m.awayTeam !== teamName) continue;
+
+    const teamScore = m.homeTeam === teamName ? m.homeScore : m.awayScore;
+    const oppScore  = m.homeTeam === teamName ? m.awayScore : m.homeScore;
+    const won  = teamScore > oppScore;
+    const drew = teamScore === oppScore;
+
+    if (m.round === 'group') {
+      if (won) {
+        wins++;
+        if (isTierB) tierBonus += SCORING.group_win_bonus;
+      } else if (drew) {
+        draws++;
+      }
+    } else if (won) {
+      const key = ROUND_SCORE_KEY[m.round];
+      if (key) knockoutPts += SCORING[key];
+    }
+  }
+
+  const advanceBonus = advancedTeams.has(teamName) ? SCORING.group_advance : 0;
+  const bonuses = tierBonus + advanceBonus;
+  const total   = wins * SCORING.group_win + draws * SCORING.group_draw + bonuses + knockoutPts;
+
+  return { wins, draws, bonuses, knockoutPts, total };
+}
+
+// ── Score history builder ──────────────────────────────────────────────────────
+
+/**
+ * Build a chronological list of scoring events for one participant.
+ * Each entry: { date, matchId, team, event, pts, runningTotal }
+ */
+function _buildScoreHistory(teamNames, matches, advancedTeams) {
+  const events = [];
+  const advanceBonusAwarded = new Set();
+  let running = 0;
+
+  const finished = matches
+    .filter(m => isFinished(m.status))
+    .slice()
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  for (const m of finished) {
+    for (const teamName of teamNames) {
+      if (m.homeTeam !== teamName && m.awayTeam !== teamName) continue;
+
+      const teamScore = m.homeTeam === teamName ? m.homeScore : m.awayScore;
+      const oppScore  = m.homeTeam === teamName ? m.awayScore : m.homeScore;
+      const won  = teamScore > oppScore;
+      const drew = teamScore === oppScore;
+      const isTierB = !TIER_A.has(teamName);
+
+      // Advance bonus fires on the team's first knockout appearance
+      if (m.round !== 'group' && !advanceBonusAwarded.has(teamName) && advancedTeams.has(teamName)) {
+        advanceBonusAwarded.add(teamName);
+        running += SCORING.group_advance;
+        events.push({ date: m.date, matchId: null, team: teamName,
+          event: 'group_advance', pts: SCORING.group_advance, runningTotal: running });
+      }
+
+      let pts = 0, event = '';
+
+      if (m.round === 'group') {
+        if (won) {
+          pts   = SCORING.group_win + (isTierB ? SCORING.group_win_bonus : 0);
+          event = 'group_win';
+        } else if (drew) {
+          pts   = SCORING.group_draw;
+          event = 'group_draw';
+        }
+      } else if (won) {
+        const key = ROUND_SCORE_KEY[m.round];
+        if (key) { pts = SCORING[key]; event = key; }
+      }
+
+      if (pts > 0) {
+        running += pts;
+        events.push({ date: m.date, matchId: m.matchId, team: teamName, event, pts, runningTotal: running });
+      }
+    }
+  }
+
+  return events;
+}
+
+// ── calculateScores ────────────────────────────────────────────────────────────
+
+/**
+ * Main scoring function. Pure — no side effects.
+ *
+ * @param {object[]} matches   — parsed results from DataLayer.parseResults()
+ * @param {object[]|null} standings — raw API-Football standings (may be null)
+ *
+ * @returns {Array<{
+ *   rank:          number,
+ *   name:          string,
+ *   teams:         string[],
+ *   totalScore:    number,
+ *   teamBreakdown: { [teamName]: { wins, draws, bonuses, knockoutPts, total } },
+ *   scoreHistory:  { date, matchId, team, event, pts, runningTotal }[],
+ *   flags:         string[],
+ * }>} Sorted by totalScore desc; tiebreak: total wins desc. Tied entries share a rank.
+ */
+function calculateScores(matches, standings = null) {
+  const advancedTeams = determineAdvancedTeams(matches, standings);
+
+  const results = Object.entries(PARTICIPANTS).map(([name, teamNames]) => {
+    const teamBreakdown = {};
+    let totalWins = 0;
+
+    for (const teamName of teamNames) {
+      const td = _scoreTeam(teamName, matches, advancedTeams);
+      teamBreakdown[teamName] = td;
+      totalWins += td.wins;
+    }
+
+    const totalScore = Object.values(teamBreakdown).reduce((s, t) => s + t.total, 0);
+    const scoreHistory = _buildScoreHistory(teamNames, matches, advancedTeams);
+
+    // Same-group conflict flag (currently only possible for Logan: USA + Switzerland)
+    const flags = [];
+    const [t1, t2] = teamNames;
+    const g1 = findTeamGroup(t1);
+    const g2 = findTeamGroup(t2);
+    if (g1 && g2 && g1 === g2) {
+      flags.push(`same-group conflict: ${t1} and ${t2} are both in Group ${g1}`);
+    }
+
+    return { name, teams: teamNames, totalScore, teamBreakdown, scoreHistory, flags, _wins: totalWins };
+  });
+
+  // Primary sort: totalScore desc. Tiebreak: total wins desc.
+  results.sort((a, b) => b.totalScore - a.totalScore || b._wins - a._wins);
+
+  // Assign ranks — tied entries share a rank; next rank skips accordingly
+  let nextRank = 1;
+  for (let i = 0; i < results.length; i++) {
+    const prev = results[i - 1];
+    const tied = prev && prev.totalScore === results[i].totalScore && prev._wins === results[i]._wins;
+    results[i].rank = tied ? prev.rank : nextRank;
+    nextRank++;
+    delete results[i]._wins; // remove internal sort field from output
+  }
+
+  return results;
+}
+
+// ── Scoring engine (orchestrator) ─────────────────────────────────────────────
+
 class ScoringEngine {
   constructor() {
-    this._data    = new DataLayer();
-    this._matches = []; // parsed match objects
+    this._data      = new DataLayer();
+    this._matches   = [];
+    this._standings = null;
   }
 
   async init() {
     try {
-      this._matches = await this._data.fetchMatches();
+      // Fetch both in parallel; standings failure is non-fatal
+      [this._matches, this._standings] = await Promise.all([
+        this._data.fetchMatches(),
+        this._data.fetchStandings().catch(err => {
+          console.warn('standings fetch failed, will infer from matches:', err.message);
+          return null;
+        }),
+      ]);
     } catch (err) {
       this._renderError(err.message);
       return;
@@ -432,76 +680,11 @@ class ScoringEngine {
     this._renderLeaderboard();
   }
 
-  /**
-   * Calculate fantasy points for a single team across all finished matches.
-   * Returns { total, breakdown } — breakdown is label → cumulative pts.
-   */
-  scoreTeam(teamName) {
-    const breakdown = {};
-    let total = 0;
-    let advancedFromGroup = false;
-    const isTierB = !TIER_A.has(teamName);
-
-    const add = (key, pts) => {
-      if (!pts) return;
-      total += pts;
-      breakdown[key] = (breakdown[key] || 0) + pts;
-    };
-
-    for (const m of this._matches) {
-      if (!isFinished(m.status)) continue;
-      if (m.homeTeam !== teamName && m.awayTeam !== teamName) continue;
-
-      const teamScore = m.homeTeam === teamName ? m.homeScore : m.awayScore;
-      const oppScore  = m.homeTeam === teamName ? m.awayScore : m.homeScore;
-      const won  = teamScore > oppScore;
-      const draw = teamScore === oppScore;
-
-      if (m.round === 'group') {
-        if (won) {
-          add('group_win', SCORING.group_win);
-          if (isTierB) add('tier_b_bonus', SCORING.group_win_bonus);
-        } else if (draw) {
-          add('group_draw', SCORING.group_draw);
-        }
-      } else {
-        // First knockout appearance = advanced from group
-        advancedFromGroup = true;
-        const scoreKey = ROUND_SCORE_KEY[m.round];
-        if (scoreKey && won) add(scoreKey, SCORING[scoreKey]);
-      }
-    }
-
-    if (advancedFromGroup) add('group_advance', SCORING.group_advance);
-
-    return { total, breakdown };
-  }
-
-  /**
-   * Calculate total points for a participant (sum of both teams).
-   * Returns { total, teams: [{ teamName, total, breakdown }] }
-   */
-  scoreParticipant(name) {
-    const teams = PARTICIPANTS[name];
-    if (!teams) return { total: 0, teams: [] };
-
-    const teamResults = teams.map(teamName => {
-      const { total, breakdown } = this.scoreTeam(teamName);
-      return { teamName, total, breakdown };
-    });
-
-    return {
-      total: teamResults.reduce((s, t) => s + t.total, 0),
-      teams: teamResults,
-    };
-  }
-
   // ── Rendering helpers ──────────────────────────────────────────────────────
 
   _updateStatusBar() {
     const badge = document.getElementById('data-source');
     const ts    = document.getElementById('last-updated');
-
     const labels = { live: 'Live', 'local-cache': 'Cached', 'gist-cache': 'Gist Cache' };
     badge.textContent = labels[this._data.source] ?? this._data.source;
     badge.className   = `badge ${this._data.source === 'live' ? 'live' : 'cached'}`;
@@ -556,12 +739,7 @@ class ScoringEngine {
   }
 
   _renderLeaderboard() {
-    const standings = Object.keys(PARTICIPANTS).map(name => ({
-      name,
-      ...this.scoreParticipant(name),
-    })).sort((a, b) => b.total - a.total);
-
-    renderLeaderboard(standings);
+    renderLeaderboard(calculateScores(this._matches, this._standings));
   }
 
   _renderError(msg) {

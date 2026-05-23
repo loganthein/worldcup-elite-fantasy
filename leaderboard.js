@@ -45,17 +45,22 @@ function renderLeaderboard(standings) {
     const rank      = idx + 1;
     const rankClass = rank <= 3 ? ` rank-${rank}` : '';
 
-    const teamsStr = entry.teams.map(t => {
-      const flag = TEAM_FLAGS[t.teamName] || '';
-      return `${flag} ${t.teamName} <span class="team-pts">(${t.total})</span>`;
+    const teamsStr = entry.teams.map(teamName => {
+      const flag = TEAM_FLAGS[teamName] || '';
+      const pts  = entry.teamBreakdown[teamName]?.total ?? 0;
+      return `${flag} ${teamName} <span class="team-pts">(${pts})</span>`;
     }).join(' &nbsp;·&nbsp; ');
+
+    const flagStr = entry.flags?.length
+      ? ` <span class="conflict-flag" title="${escHtml(entry.flags[0])}">⚠</span>`
+      : '';
 
     const row = document.createElement('tr');
     row.innerHTML = `
       <td class="rank${rankClass}">${rank}</td>
-      <td class="player-name">${escHtml(entry.name)}</td>
+      <td class="player-name">${escHtml(entry.name)}${flagStr}</td>
       <td class="team-name">${teamsStr}</td>
-      <td class="score">${entry.total}</td>
+      <td class="score">${entry.totalScore}</td>
     `;
 
     row.style.cursor = 'pointer';
@@ -81,17 +86,21 @@ function toggleBreakdown(row, entry) {
   cell.setAttribute('colspan', '4');
   cell.style.cssText = 'padding: 0.25rem 1rem 1rem 3rem;';
 
-  const teamBlocks = entry.teams.map(t => {
-    const flag = TEAM_FLAGS[t.teamName] || '';
-    const bk = Object.entries(t.breakdown)
-      .map(([k, v]) => `${formatKey(k)}: ${v > 0 ? '+' : ''}${v}`)
-      .join(' &nbsp;·&nbsp; ');
+  const teamBlocks = entry.teams.map(teamName => {
+    const flag = TEAM_FLAGS[teamName] || '';
+    const td   = entry.teamBreakdown[teamName] ?? {};
+    const parts = [];
+    if (td.wins)        parts.push(`${td.wins}W`);
+    if (td.draws)       parts.push(`${td.draws}D`);
+    if (td.bonuses)     parts.push(`+${td.bonuses} bonus`);
+    if (td.knockoutPts) parts.push(`+${td.knockoutPts} KO`);
+    const detail = parts.length ? parts.join(' · ') : 'No results yet';
 
     return `
       <div style="padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.85rem;">
-        <span style="font-weight:600">${flag} ${escHtml(t.teamName)}</span>
-        <span style="color:var(--text-muted); margin-left: 0.75rem">${bk || 'No results yet'}</span>
-        <span style="float:right; font-weight:700">${t.total} pts</span>
+        <span style="font-weight:600">${flag} ${escHtml(teamName)}</span>
+        <span style="color:var(--text-muted); margin-left: 0.75rem">${detail}</span>
+        <span style="float:right; font-weight:700">${td.total ?? 0} pts</span>
       </div>
     `;
   }).join('');
