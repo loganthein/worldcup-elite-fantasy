@@ -230,6 +230,29 @@ function _savePrevRanks(scores) {
   catch { /* quota, private mode — ignore */ }
 }
 
+// ── Tab navigation ─────────────────────────────────────────────────────────────
+
+function initTabs() {
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels  = document.querySelectorAll('.tab-panel');
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+
+      buttons.forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-selected', String(b === btn));
+      });
+
+      panels.forEach(p => {
+        const isTarget = p.id === `panel-${target}`;
+        p.classList.toggle('hidden', !isTarget);
+      });
+    });
+  });
+}
+
 // ── Utility ────────────────────────────────────────────────────────────────────
 
 function escHtml(str) {

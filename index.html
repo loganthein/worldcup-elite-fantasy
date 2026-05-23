@@ -22,30 +22,39 @@
         <span class="updated-time" id="last-updated"></span>
       </div>
     </div>
+
+    <nav class="tab-nav" role="tablist" aria-label="Site sections">
+      <button class="tab-btn active" data-tab="leaderboard"
+              role="tab" aria-selected="true" aria-controls="panel-leaderboard">
+        🏆 Leaderboard
+      </button>
+      <button class="tab-btn" data-tab="matches"
+              role="tab" aria-selected="false" aria-controls="panel-matches">
+        ⚽ Matches
+      </button>
+    </nav>
   </header>
 
   <main class="site-main">
 
-    <section class="lb-section">
-      <!-- Column headers — visible only on desktop -->
+    <div class="tab-panel" id="panel-leaderboard" role="tabpanel">
       <div class="lb-col-headers" aria-hidden="true">
         <span class="lbch-rank">#</span>
         <span class="lbch-name">Player</span>
         <span class="lbch-teams">Teams</span>
         <span class="lbch-score">Pts</span>
       </div>
-
       <div id="leaderboard-container">
         <p class="state-msg">Loading leaderboard…</p>
       </div>
-    </section>
+    </div>
 
-    <section class="matches-section">
+    <div class="tab-panel hidden" id="panel-matches" role="tabpanel">
       <h2 class="section-heading">Recent Matches</h2>
       <div id="matches-container">
         <p class="state-msg">Loading matches…</p>
       </div>
-    </section>
+    </div>
 
   </main>
 
@@ -58,7 +67,10 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="leaderboard.js"></script>
-  <script>new ScoringEngine().init();</script>
+  <script>
+    initTabs();
+    new ScoringEngine().init();
+  </script>
 
 </body>
 </html>
