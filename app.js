@@ -72,7 +72,7 @@ const GROUPS = {
 };
 
 // ── Tiers ──────────────────────────────────────────────────────────────────────
-// Tier A: no win bonus. Tier B: +2 per group-stage win.
+// Tier A: top favourites. Tier B: everyone else.
 
 const TIER_A = new Set([
   'Spain', 'France', 'England', 'Brazil',
@@ -80,18 +80,37 @@ const TIER_A = new Set([
 ]);
 
 // ── Scoring ────────────────────────────────────────────────────────────────────
+// Knockout pts and bonuses differ by tier.
 
 const SCORING = {
-  group_win:       2,   // + tier bonus if Tier B
-  group_win_bonus: 2,   // added for Tier B teams only
-  group_draw:      1,
-  group_advance:   3,   // advancing from group stage (any method)
-  round_of_32:     4,
-  round_of_16:     6,
-  quarterfinal:    8,
-  semifinal:       10,
-  champion:        15,
+  tierA: {
+    group_win:       2,
+    group_draw:      1,
+    group_1st_bonus: 1,   // finishing 1st in group (group complete)
+    group_advance:   2,   // advancing from group stage
+    round_of_32:     4,
+    round_of_16:     6,
+    quarterfinal:    9,
+    semifinal:       12,
+    champion:        20,
+  },
+  tierB: {
+    group_win:       4,
+    group_draw:      1,
+    group_1st_bonus: 3,   // finishing 1st in group (group complete)
+    group_advance:   3,   // advancing from group stage
+    round_of_32:     6,
+    round_of_16:     9,
+    quarterfinal:    12,
+    semifinal:       16,
+    champion:        20,
+  },
 };
+
+/** Returns the scoring table for a given team based on its tier. */
+function scoringFor(teamName) {
+  return TIER_A.has(teamName) ? SCORING.tierA : SCORING.tierB;
+}
 
 // ── Team flags ─────────────────────────────────────────────────────────────────
 
@@ -572,6 +591,22 @@ function _advancedFromMatches(matches) {
   return advanced;
 }
 
+/**
+ * Returns a Set of teams that finished 1st in their group.
+ * Only populated once the group is complete (all 3 games played per team).
+ */
+function determineGroupWinners(matches) {
+  const standings = computeGroupStandings(matches);
+  const winners   = new Set();
+  for (const rows of Object.values(standings)) {
+    // rows[0].played === 3 means the group is fully complete
+    if (rows.length && rows[0].played >= 3) {
+      winners.add(rows[0].team);
+    }
+  }
+  return winners;
+}
+
 // ── Per-team scorer ────────────────────────────────────────────────────────────
 
 /**
@@ -580,14 +615,14 @@ function _advancedFromMatches(matches) {
  * @returns {{
  *   wins:        number,
  *   draws:       number,
- *   bonuses:     number,  — tier-B win bonus + advance bonus
+ *   bonuses:     number,  — group_advance + group_1st_bonus
  *   knockoutPts: number,
  *   total:       number,
  * }}
  */
-function _scoreTeam(teamName, matches, advancedTeams) {
-  const isTierB = !TIER_A.has(teamName);
-  let wins = 0, draws = 0, tierBonus = 0, knockoutPts = 0;
+function _scoreTeam(teamName, matches, advancedTeams, groupWinners) {
+  const tier = scoringFor(teamName);
+  let wins = 0, draws = 0, bonuses = 0, knockoutPts = 0;
 
   for (const m of matches) {
     if (!isFinished(m.status)) continue;
@@ -599,22 +634,18 @@ function _scoreTeam(teamName, matches, advancedTeams) {
     const drew = teamScore === oppScore;
 
     if (m.round === 'group') {
-      if (won) {
-        wins++;
-        if (isTierB) tierBonus += SCORING.group_win_bonus;
-      } else if (drew) {
-        draws++;
-      }
+      if (won)       wins++;
+      else if (drew) draws++;
     } else if (won) {
       const key = ROUND_SCORE_KEY[m.round];
-      if (key) knockoutPts += SCORING[key];
+      if (key) knockoutPts += tier[key];
     }
   }
 
-  const advanceBonus = advancedTeams.has(teamName) ? SCORING.group_advance : 0;
-  const bonuses = tierBonus + advanceBonus;
-  const total   = wins * SCORING.group_win + draws * SCORING.group_draw + bonuses + knockoutPts;
+  if (advancedTeams.has(teamName)) bonuses += tier.group_advance;
+  if (groupWinners.has(teamName))  bonuses += tier.group_1st_bonus;
 
+  const total = wins * tier.group_win + draws * tier.group_draw + bonuses + knockoutPts;
   return { wins, draws, bonuses, knockoutPts, total };
 }
 
@@ -624,9 +655,10 @@ function _scoreTeam(teamName, matches, advancedTeams) {
  * Build a chronological list of scoring events for one participant.
  * Each entry: { date, matchId, team, event, pts, runningTotal }
  */
-function _buildScoreHistory(teamNames, matches, advancedTeams) {
+function _buildScoreHistory(teamNames, matches, advancedTeams, groupWinners) {
   const events = [];
   const advanceBonusAwarded = new Set();
+  const firstBonusAwarded   = new Set();
   let running = 0;
 
   const finished = matches
@@ -642,29 +674,37 @@ function _buildScoreHistory(teamNames, matches, advancedTeams) {
       const oppScore  = m.homeTeam === teamName ? m.awayScore : m.homeScore;
       const won  = teamScore > oppScore;
       const drew = teamScore === oppScore;
-      const isTierB = !TIER_A.has(teamName);
+      const tier = scoringFor(teamName);
 
-      // Advance bonus fires on the team's first knockout appearance
-      if (m.round !== 'group' && !advanceBonusAwarded.has(teamName) && advancedTeams.has(teamName)) {
-        advanceBonusAwarded.add(teamName);
-        running += SCORING.group_advance;
-        events.push({ date: m.date, matchId: null, team: teamName,
-          event: 'group_advance', pts: SCORING.group_advance, runningTotal: running });
+      // Both group bonuses fire on the team's first knockout appearance
+      if (m.round !== 'group') {
+        if (!advanceBonusAwarded.has(teamName) && advancedTeams.has(teamName)) {
+          advanceBonusAwarded.add(teamName);
+          running += tier.group_advance;
+          events.push({ date: m.date, matchId: null, team: teamName,
+            event: 'group_advance', pts: tier.group_advance, runningTotal: running });
+        }
+        if (!firstBonusAwarded.has(teamName) && groupWinners.has(teamName)) {
+          firstBonusAwarded.add(teamName);
+          running += tier.group_1st_bonus;
+          events.push({ date: m.date, matchId: null, team: teamName,
+            event: 'group_1st', pts: tier.group_1st_bonus, runningTotal: running });
+        }
       }
 
       let pts = 0, event = '';
 
       if (m.round === 'group') {
         if (won) {
-          pts   = SCORING.group_win + (isTierB ? SCORING.group_win_bonus : 0);
+          pts   = tier.group_win;
           event = 'group_win';
         } else if (drew) {
-          pts   = SCORING.group_draw;
+          pts   = tier.group_draw;
           event = 'group_draw';
         }
       } else if (won) {
         const key = ROUND_SCORE_KEY[m.round];
-        if (key) { pts = SCORING[key]; event = key; }
+        if (key) { pts = tier[key]; event = key; }
       }
 
       if (pts > 0) {
@@ -697,19 +737,20 @@ function _buildScoreHistory(teamNames, matches, advancedTeams) {
  */
 function calculateScores(matches, standings = null) {
   const advancedTeams = determineAdvancedTeams(matches, standings);
+  const groupWinners  = determineGroupWinners(matches);
 
   const results = Object.entries(PARTICIPANTS).map(([name, teamNames]) => {
     const teamBreakdown = {};
     let totalWins = 0;
 
     for (const teamName of teamNames) {
-      const td = _scoreTeam(teamName, matches, advancedTeams);
+      const td = _scoreTeam(teamName, matches, advancedTeams, groupWinners);
       teamBreakdown[teamName] = td;
       totalWins += td.wins;
     }
 
     const totalScore = Object.values(teamBreakdown).reduce((s, t) => s + t.total, 0);
-    const scoreHistory = _buildScoreHistory(teamNames, matches, advancedTeams);
+    const scoreHistory = _buildScoreHistory(teamNames, matches, advancedTeams, groupWinners);
 
     // Same-group conflict flag (currently only possible for Logan: USA + Switzerland)
     const flags = [];
@@ -1128,17 +1169,17 @@ function _potentialMatchPts(match, teamName) {
 
   const winning = teamScore > oppScore;
   const drawing = teamScore === oppScore;
-  const isTierB = !TIER_A.has(teamName);
+  const tier    = scoringFor(teamName);
 
   if (match.round === 'group') {
-    if (winning) return SCORING.group_win + (isTierB ? SCORING.group_win_bonus : 0);
-    if (drawing) return SCORING.group_draw;
+    if (winning) return tier.group_win;
+    if (drawing) return tier.group_draw;
     return 0;
   }
 
   if (winning) {
     const key = ROUND_SCORE_KEY[match.round];
-    return key ? SCORING[key] : 0;
+    return key ? tier[key] : 0;
   }
   return 0;
 }
@@ -1225,6 +1266,7 @@ const FEED_EVENT_LABELS = {
   group_win:    'Group stage win',
   group_draw:   'Group stage draw',
   group_advance:'Advanced from group',
+  group_1st:    'Won group (1st place)',
   round_of_32:  'Round of 32 win',
   round_of_16:  'Round of 16 win',
   quarterfinal: 'Quarterfinal win',
@@ -1241,10 +1283,12 @@ const FEED_EVENT_LABELS = {
  */
 function buildActivityFeed(matches) {
   const advancedTeams = determineAdvancedTeams(matches, null);
+  const groupWinners  = determineGroupWinners(matches);
   const feed = [];
 
-  // Track per-team advance bonus so we emit it exactly once
+  // Track per-team bonuses so we emit each exactly once
   const advanceBonusEmitted = new Set();
+  const firstBonusEmitted   = new Set();
 
   const finished = matches
     .filter(m => isFinished(m.status))
@@ -1257,56 +1301,54 @@ function buildActivityFeed(matches) {
       const owner = TEAM_OWNER[teamName];
       if (!owner) continue;
 
-      const isHome   = m.homeTeam === teamName;
+      const isHome    = m.homeTeam === teamName;
       const teamScore = isHome ? m.homeScore : m.awayScore;
       const oppScore  = isHome ? m.awayScore : m.homeScore;
       const won  = teamScore > oppScore;
       const drew = teamScore === oppScore;
-      const isTierB = !TIER_A.has(teamName);
+      const tier = scoringFor(teamName);
 
-      // Emit advance bonus on first knockout match appearance
-      if (m.round !== 'group' && !advanceBonusEmitted.has(teamName) && advancedTeams.has(teamName)) {
-        advanceBonusEmitted.add(teamName);
-        feed.push({
-          date:      m.date,
-          owner,
-          team:      teamName,
-          event:     'group_advance',
-          pts:       SCORING.group_advance,
-          homeTeam:  m.homeTeam,
-          awayTeam:  m.awayTeam,
-          homeScore: m.homeScore,
-          awayScore: m.awayScore,
-          matchId:   null,
-        });
+      // Both group bonuses fire on the team's first knockout appearance
+      if (m.round !== 'group') {
+        if (!advanceBonusEmitted.has(teamName) && advancedTeams.has(teamName)) {
+          advanceBonusEmitted.add(teamName);
+          feed.push({
+            date: m.date, owner, team: teamName,
+            event: 'group_advance', pts: tier.group_advance,
+            homeTeam: m.homeTeam, awayTeam: m.awayTeam,
+            homeScore: m.homeScore, awayScore: m.awayScore, matchId: null,
+          });
+        }
+        if (!firstBonusEmitted.has(teamName) && groupWinners.has(teamName)) {
+          firstBonusEmitted.add(teamName);
+          feed.push({
+            date: m.date, owner, team: teamName,
+            event: 'group_1st', pts: tier.group_1st_bonus,
+            homeTeam: m.homeTeam, awayTeam: m.awayTeam,
+            homeScore: m.homeScore, awayScore: m.awayScore, matchId: null,
+          });
+        }
       }
 
       let pts = 0, event = '';
       if (m.round === 'group') {
         if (won) {
-          pts   = SCORING.group_win + (isTierB ? SCORING.group_win_bonus : 0);
+          pts   = tier.group_win;
           event = 'group_win';
         } else if (drew) {
-          pts   = SCORING.group_draw;
+          pts   = tier.group_draw;
           event = 'group_draw';
         }
       } else if (won) {
         const key = ROUND_SCORE_KEY[m.round];
-        if (key) { pts = SCORING[key]; event = key; }
+        if (key) { pts = tier[key]; event = key; }
       }
 
       if (pts > 0) {
         feed.push({
-          date:      m.date,
-          owner,
-          team:      teamName,
-          event,
-          pts,
-          homeTeam:  m.homeTeam,
-          awayTeam:  m.awayTeam,
-          homeScore: m.homeScore,
-          awayScore: m.awayScore,
-          matchId:   m.matchId,
+          date: m.date, owner, team: teamName, event, pts,
+          homeTeam: m.homeTeam, awayTeam: m.awayTeam,
+          homeScore: m.homeScore, awayScore: m.awayScore, matchId: m.matchId,
         });
       }
     }
@@ -1321,7 +1363,7 @@ function _buildFeedItem(item) {
   const color     = OWNER_COLORS[item.owner] || '#8090b8';
   const flag      = flagImg(item.team);
   const label     = FEED_EVENT_LABELS[item.event] || item.event;
-  const isAdvance = item.event === 'group_advance';
+  const isAdvance = item.event === 'group_advance' || item.event === 'group_1st';
   const isChamp   = item.event === 'champion';
 
   const d       = new Date(item.date);

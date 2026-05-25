@@ -1026,6 +1026,15 @@ a:hover { color: var(--red); }
   gap: 0.35rem;
 }
 
+.rules-tier-teams-inline {
+  margin-bottom: 0.75rem;
+}
+
+.rules-tier-b-note {
+  margin-bottom: 0.25rem;
+  font-size: 0.82rem;
+}
+
 .rules-team-chip {
   font-size: 0.75rem;
   font-weight: 600;
