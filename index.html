@@ -102,53 +102,58 @@
           <p class="rules-body">Each of the 14 participants was assigned two national teams. Points are earned based on how your teams perform throughout the tournament.</p>
         </div>
 
-        <div class="rules-card sc-card">
-          <div class="sc-header">
-            <span class="rules-icon">⚽</span>
-            <h2 class="rules-card-title">Scoring System</h2>
-          </div>
-          <div class="sc-cols">
+        <!-- Scoring System — inline styles only so nothing can override layout -->
+        <div class="rules-card" style="padding:0;overflow:hidden;">
 
-            <!-- Tier A column -->
-            <div class="sc-col sc-col-a">
-              <div class="sc-col-head">Tier A</div>
-              <div class="sc-teams-list">Spain · France · England · Brazil · Argentina · Portugal · Germany · Netherlands</div>
-              <div class="sc-teams-short">Top 8 favorites</div>
-              <div class="sc-hdivider"></div>
-              <div class="sc-section-lbl">Group Stage</div>
-              <div class="sc-row"><span class="sc-evt">Win</span><span class="sc-pts sc-blue">2 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">Draw</span><span class="sc-pts sc-blue">1 pt</span></div>
-              <div class="sc-row"><span class="sc-evt">Win group</span><span class="sc-pts sc-blue">+1 bonus</span></div>
-              <div class="sc-row"><span class="sc-evt">Advance</span><span class="sc-pts sc-blue">2 pts</span></div>
-              <div class="sc-hdivider"></div>
-              <div class="sc-section-lbl">Knockout</div>
-              <div class="sc-row"><span class="sc-evt">R32 win</span><span class="sc-pts sc-red">4 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">R16 win</span><span class="sc-pts sc-red">6 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">QF win</span><span class="sc-pts sc-red">9 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">SF win</span><span class="sc-pts sc-red">12 pts</span></div>
-              <div class="sc-row sc-row-champ"><span class="sc-evt">Champion</span><span class="sc-pts sc-champ">20 pts</span></div>
+          <!-- Card header -->
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 9px;border-bottom:1px solid #d4daee;">
+            <span>⚽</span>
+            <span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:1.2rem;letter-spacing:0.05em;color:#1a1e35;">Scoring System</span>
+          </div>
+
+          <!-- Two equal columns — grid, never wraps -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;">
+
+            <!-- LEFT: Tier A -->
+            <div style="padding:10px 10px 12px;border-right:1px solid #d4daee;">
+
+              <div style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:15px;letter-spacing:0.06em;color:#b86e00;margin-bottom:3px;">TIER A</div>
+              <div style="font-size:8px;color:#8090b8;line-height:1.4;margin-bottom:7px;">Spain · France · England · Brazil · Argentina · Portugal · Germany · Netherlands</div>
+
+              <div style="font-size:9px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.07em;color:#8090b8;margin-bottom:3px;">Group Stage</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Group win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">2pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Draw</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">1pt</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Win group</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">+1</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Advance</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">2pts</span></div>
+
+              <div style="font-size:9px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.07em;color:#8090b8;margin:7px 0 3px;">Knockout</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>R32 win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">4pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>R16 win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">6pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>QF win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">9pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>SF win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">12pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;margin:4px -6px 0;background:rgba(184,110,0,0.09);border-radius:4px;font-size:11px;font-weight:700;color:#1a1e35;"><span>Champion</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:14px;color:#b86e00;font-weight:400;">20pts</span></div>
+
             </div>
 
-            <!-- Vertical divider -->
-            <div class="sc-vdivider" aria-hidden="true"></div>
+            <!-- RIGHT: Tier B -->
+            <div style="padding:10px 10px 12px;">
 
-            <!-- Tier B column -->
-            <div class="sc-col sc-col-b">
-              <div class="sc-col-head">Tier B</div>
-              <div class="sc-teams-list">All other teams</div>
-              <div class="sc-hdivider"></div>
-              <div class="sc-section-lbl">Group Stage</div>
-              <div class="sc-row"><span class="sc-evt">Win</span><span class="sc-pts sc-blue">4 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">Draw</span><span class="sc-pts sc-blue">1 pt</span></div>
-              <div class="sc-row"><span class="sc-evt">Win group</span><span class="sc-pts sc-blue">+3 bonus</span></div>
-              <div class="sc-row"><span class="sc-evt">Advance</span><span class="sc-pts sc-blue">3 pts</span></div>
-              <div class="sc-hdivider"></div>
-              <div class="sc-section-lbl">Knockout</div>
-              <div class="sc-row"><span class="sc-evt">R32 win</span><span class="sc-pts sc-red">6 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">R16 win</span><span class="sc-pts sc-red">9 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">QF win</span><span class="sc-pts sc-red">12 pts</span></div>
-              <div class="sc-row"><span class="sc-evt">SF win</span><span class="sc-pts sc-red">16 pts</span></div>
-              <div class="sc-row sc-row-champ"><span class="sc-evt">Champion</span><span class="sc-pts sc-champ">20 pts</span></div>
+              <div style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:15px;letter-spacing:0.06em;color:#0891b2;margin-bottom:3px;">TIER B</div>
+              <div style="font-size:8px;color:#8090b8;line-height:1.4;margin-bottom:7px;">All other teams</div>
+
+              <div style="font-size:9px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.07em;color:#8090b8;margin-bottom:3px;">Group Stage</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Group win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">4pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Draw</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">1pt</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Win group</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">+3</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>Advance</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#2563eb;">3pts</span></div>
+
+              <div style="font-size:9px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.07em;color:#8090b8;margin:7px 0 3px;">Knockout</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>R32 win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">6pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>R16 win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">9pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>QF win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">12pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #edf1f8;font-size:11px;color:#1a1e35;"><span>SF win</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:13px;color:#d93025;">16pts</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;margin:4px -6px 0;background:rgba(184,110,0,0.09);border-radius:4px;font-size:11px;font-weight:700;color:#1a1e35;"><span>Champion</span><span style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:14px;color:#b86e00;font-weight:400;">20pts</span></div>
+
             </div>
 
           </div>
