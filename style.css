@@ -1788,8 +1788,8 @@ a:hover { color: var(--red); }
 #tournament-countdown { margin-bottom: 0.75rem; }
 
 .tcd-wrap {
-  background: var(--text-1);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: var(--r-lg);
   padding: 0.9rem 0.75rem 0.8rem;
   text-align: center;
@@ -1802,7 +1802,7 @@ a:hover { color: var(--red); }
   font-weight: 600;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #22d3ee;
+  color: #002868;
   margin-bottom: 0.75rem;
 }
 
@@ -1821,15 +1821,26 @@ a:hover { color: var(--red); }
   align-items: center;
   gap: 0.2rem;
   padding: 0.5rem 0.25rem 0.45rem;
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--bg-card);
   border-radius: var(--r-sm);
 }
+
+/* USMNT alternating accent colors */
+.tcd-days  { border: 1px solid #002868; }
+.tcd-hours { border: 1px solid #BF0A30; }
+.tcd-mins  { border: 1px solid #002868; }
+.tcd-secs  { border: 1px solid #BF0A30; }
+
+.tcd-days  .tcd-num { color: #002868; }
+.tcd-hours .tcd-num { color: #BF0A30; }
+.tcd-mins  .tcd-num { color: #002868; }
+.tcd-secs  .tcd-num { color: #BF0A30; }
 
 .tcd-sep {
   font-family: var(--font-body);
   font-size: 20px;
   font-weight: 700;
-  color: rgba(255,255,255,0.2);
+  color: var(--text-3);
   line-height: 1;
   align-self: center;
   margin-bottom: 14px; /* offset to align with numbers, not labels */
@@ -1837,10 +1848,9 @@ a:hover { color: var(--red); }
 
 .tcd-num {
   font-family: var(--font-body);
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
   line-height: 1;
-  color: rgba(255,255,255,0.92);
   letter-spacing: -0.02em;
 }
 
@@ -1850,7 +1860,7 @@ a:hover { color: var(--red); }
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(255,255,255,0.35);
+  color: var(--text-3);
 }
 
 /* Seconds gentle pulse — pure CSS, no JS needed */
@@ -1865,7 +1875,7 @@ a:hover { color: var(--red); }
 .tcd-sub {
   font-family: var(--font-mono);
   font-size: 0.55rem;
-  color: rgba(255,255,255,0.3);
+  color: var(--text-3);
   letter-spacing: 0.06em;
 }
 
