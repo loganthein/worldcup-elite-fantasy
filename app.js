@@ -25,7 +25,7 @@ const PARTICIPANTS = {
   Patrick:  ['Portugal',    'Austria'],
   Sara:     ['Spain',       'Mexico'],
   TJ:       ['Colombia',    'Turkey'],
-  'Tom Moran': ['Belgium',  'South Korea'],
+  'Tom Moran': ['Belgium',  'Czech Republic'],
   Goon:     ['Netherlands', 'Ecuador'],
 };
 
@@ -57,7 +57,7 @@ for (const [name, teams] of Object.entries(PARTICIPANTS)) {
 // ── Groups ─────────────────────────────────────────────────────────────────────
 
 const GROUPS = {
-  A: ['Mexico',      'South Korea', 'Czechia',    'South Africa'],
+  A: ['Mexico',      'South Korea', 'Czech Republic', 'South Africa'],
   B: ['Switzerland', 'Canada',      'Bosnia',     'Qatar'],
   C: ['Brazil',      'Morocco',     'Haiti',      'Scotland'],
   D: ['USA',         'Paraguay',    'Australia',  'Turkey'],
@@ -117,8 +117,8 @@ function scoringFor(teamName) {
 const TEAM_FLAGS = {
   // Group A
   Mexico:         '🇲🇽',
-  'South Korea':  '🇰🇷',
-  Czechia:        '🇨🇿',
+  'South Korea':   '🇰🇷',
+  'Czech Republic':'🇨🇿',
   'South Africa': '🇿🇦',
   // Group B
   Switzerland:    '🇨🇭',
@@ -185,8 +185,8 @@ const TEAM_FLAGS = {
 const FLAG_URLS = {
   // Group A
   Mexico:         'https://flagcdn.com/w40/mx.png',
-  'South Korea':  'https://flagcdn.com/w40/kr.png',
-  Czechia:        'https://flagcdn.com/w40/cz.png',
+  'South Korea':   'https://flagcdn.com/w40/kr.png',
+  'Czech Republic':'https://flagcdn.com/w40/cz.png',
   'South Africa': 'https://flagcdn.com/w40/za.png',
   // Group B
   Switzerland:    'https://flagcdn.com/w40/ch.png',
@@ -283,8 +283,8 @@ const NAME_MAP = {
   'Congo Republic':           'Congo',
   // Turkey
   'Türkiye':                  'Turkey',
-  // Czechia
-  'Czech Republic':           'Czechia',
+  // Czech Republic
+  'Czechia':                  'Czech Republic',
   // Scotland / England (sometimes returned as full GB names)
   'Scotland (GB-SCT)':        'Scotland',
   'England (GB-ENG)':         'England',

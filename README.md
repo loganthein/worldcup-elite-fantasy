@@ -126,7 +126,7 @@ Defined in the `PARTICIPANTS` object in `app.js`:
 | Patrick | Portugal | Austria |
 | Sara | Spain | Mexico |
 | TJ | Colombia | Turkey |
-| Tom Moran | Belgium | South Korea |
+| Tom Moran | Belgium | Czech Republic |
 | Goon | Netherlands | Ecuador |
 
 To add or change participants, edit `PARTICIPANTS` in `app.js`.
