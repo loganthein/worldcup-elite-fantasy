@@ -283,6 +283,8 @@ const NAME_MAP = {
   'Congo Republic':           'Congo',
   // Turkey
   'Türkiye':                  'Turkey',
+  // Iran
+  'Iran (Islamic Republic)':  'Iran',
   // Czech Republic
   'Czechia':                  'Czech Republic',
   // Scotland / England (sometimes returned as full GB names)
