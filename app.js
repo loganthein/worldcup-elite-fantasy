@@ -257,6 +257,50 @@ function flagImg(team, sizeClass) {
   return `<img src="${url}" alt="${team}" class="${cls}" loading="lazy">`;
 }
 
+// ── Debug collector ───────────────────────────────────────────────────────────
+// Populated during normal fetch/parse; read by renderDebugPanel() in leaderboard.js.
+
+const _DEBUG = {
+  fetchTimestamp:    null,   // ms since epoch of last ESPN GET
+  fetchStatus:       null,   // HTTP status code
+  rawEventCount:     null,   // json.events.length from ESPN
+  parsedCount:       null,   // events successfully converted to match objects
+  skippedCount:      null,   // events dropped (no comp / no home+away)
+  fetchSource:       null,   // 'live' | 'local-cache' | 'gist-cache' | 'error'
+  gistSyncTimestamp: null,   // ms since epoch of last successful Gist write
+  unmappedTeams:     new Set(),
+  unmappedRounds:    new Set(),
+};
+
+function getDebugSnapshot() {
+  let lsInfo = null;
+  try {
+    const raw = localStorage.getItem(LS_MATCHES_KEY);
+    if (raw) {
+      const { fetchedAt } = JSON.parse(raw);
+      const age = Date.now() - fetchedAt;
+      lsInfo = {
+        fetchedAt,
+        ttlLiveMs:  CONFIG.CACHE_TTL_LIVE_MS  - age,
+        ttlIdleMs:  CONFIG.CACHE_TTL_IDLE_MS  - age,
+      };
+    }
+  } catch { /* ignore */ }
+
+  return {
+    fetchTimestamp:    _DEBUG.fetchTimestamp,
+    fetchStatus:       _DEBUG.fetchStatus,
+    rawEventCount:     _DEBUG.rawEventCount,
+    parsedCount:       _DEBUG.parsedCount,
+    skippedCount:      _DEBUG.skippedCount,
+    fetchSource:       _DEBUG.fetchSource,
+    gistSyncTimestamp: _DEBUG.gistSyncTimestamp,
+    unmappedTeams:     [..._DEBUG.unmappedTeams],
+    unmappedRounds:    [..._DEBUG.unmappedRounds],
+    localStorage:      lsInfo,
+  };
+}
+
 // ── Team name map ──────────────────────────────────────────────────────────────
 // API-Football name → our canonical name.
 // Only entries that differ need to be listed.
@@ -304,7 +348,9 @@ const NAME_MAP = {
 
 /** Normalize an API-Football team name to our canonical name. */
 function canonicalTeam(apiName) {
-  return NAME_MAP[apiName] ?? apiName;
+  if (NAME_MAP[apiName] !== undefined) return NAME_MAP[apiName];
+  if (apiName) _DEBUG.unmappedTeams.add(apiName);
+  return apiName;
 }
 
 // ── Round parser ───────────────────────────────────────────────────────────────
@@ -319,7 +365,10 @@ function parseRound(slug) {
     case 'semifinals':    return 'semifinal';
     case 'final':         return 'final';
     default:
-      if (slug) console.warn(`[parseRound] Unrecognized ESPN slug: "${slug}" — add to parseRound()`);
+      if (slug) {
+        console.warn(`[parseRound] Unrecognized ESPN slug: "${slug}" — add to parseRound()`);
+        _DEBUG.unmappedRounds.add(slug);
+      }
       return slug;
   }
 }
@@ -380,6 +429,7 @@ class DataLayer {
         : CONFIG.CACHE_TTL_IDLE_MS;
       if (!this._isStale(local.fetchedAt, ttl)) {
         this.source = 'local-cache';
+        _DEBUG.fetchSource = 'local-cache';
         return local.data;
       }
     }
@@ -387,10 +437,15 @@ class DataLayer {
     // Try ESPN
     try {
       const res = await fetch(ESPN_URL);
+      _DEBUG.fetchTimestamp = Date.now();
+      _DEBUG.fetchStatus    = res.status;
       if (!res.ok) throw new Error(`ESPN ${res.status}`);
       const json   = await res.json();
-      const parsed = this.parseResults(json.events || []);
+      const events = json.events || [];
+      _DEBUG.rawEventCount = events.length;
+      const parsed = this.parseResults(events);
       this.source  = 'live';
+      _DEBUG.fetchSource = 'live';
       this._lsWrite(LS_MATCHES_KEY, parsed);
       // Only write to Gist when we have real data (keeps it as a fallback for other devices)
       if (parsed.length) this._writeGistCache(parsed).catch(() => {});
@@ -402,6 +457,7 @@ class DataLayer {
     // Fallback: stale localStorage
     if (local) {
       this.source = 'local-cache';
+      _DEBUG.fetchSource = 'local-cache';
       return local.data;
     }
 
@@ -409,10 +465,12 @@ class DataLayer {
     const gist = await this._readGistCache();
     if (gist) {
       this.source = 'gist-cache';
+      _DEBUG.fetchSource = 'gist-cache';
       return gist;
     }
 
     this.source = 'error';
+    _DEBUG.fetchSource = 'error';
     throw new Error('No match data available.');
   }
 
@@ -426,14 +484,15 @@ class DataLayer {
    */
   parseResults(events) {
     const parsed = [];
+    let skipped = 0;
 
     for (const e of events) {
       const comp = e.competitions?.[0];
-      if (!comp) continue;
+      if (!comp) { skipped++; continue; }
 
       const home = comp.competitors.find(c => c.homeAway === 'home');
       const away = comp.competitors.find(c => c.homeAway === 'away');
-      if (!home || !away) continue;
+      if (!home || !away) { skipped++; continue; }
 
       const homeTeam = canonicalTeam(home.team.displayName);
       const awayTeam = canonicalTeam(away.team.displayName);
@@ -461,6 +520,8 @@ class DataLayer {
       });
     }
 
+    _DEBUG.parsedCount  = parsed.length;
+    _DEBUG.skippedCount = skipped;
     return parsed;
   }
 
@@ -496,11 +557,12 @@ class DataLayer {
   async _writeGistCache(parsedMatches) {
     if (!CONFIG.GIST_ID || !CONFIG.GIST_PAT) return;
     const payload = { fetchedAt: Date.now(), matches: parsedMatches };
-    await fetch(`${this._gistApiBase}/${CONFIG.GIST_ID}`, {
+    const res = await fetch(`${this._gistApiBase}/${CONFIG.GIST_ID}`, {
       method:  'PATCH',
       headers: { ...this._gistHeaders(), 'Content-Type': 'application/json' },
       body:    JSON.stringify({ files: { [CONFIG.GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } }),
     });
+    if (res.ok) _DEBUG.gistSyncTimestamp = Date.now();
   }
 
   _gistHeaders() {

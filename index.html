@@ -186,6 +186,8 @@
 
   </main>
 
+  <div id="debug-panel" hidden></div>
+
   <footer class="site-footer">
     <span id="refresh-countdown" class="countdown-text"></span>
     <span class="footer-sep">·</span>
@@ -197,11 +199,12 @@
   <script src="leaderboard.js"></script>
   <script src="notification-engine.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', async function () {
       initTabs();
       initCountdown();
-      new ScoringEngine().init();
+      await new ScoringEngine().init();
       NotificationEngine.init();
+      renderDebugPanel();
     });
   </script>
 

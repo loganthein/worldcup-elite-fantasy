@@ -394,6 +394,69 @@ function initTabs() {
 
 // ── Utility ────────────────────────────────────────────────────────────────────
 
+// ── Debug panel ────────────────────────────────────────────────────────────────
+
+function renderDebugPanel() {
+  if (new URLSearchParams(location.search).get('debug') !== 'true') return;
+
+  const panel = document.getElementById('debug-panel');
+  if (!panel) return;
+
+  const snap = getDebugSnapshot();
+
+  const fmtTime = ts => ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · ' + new Date(ts).toLocaleDateString() : '—';
+  const fmtTtl  = ms => ms == null ? '—' : ms > 0 ? `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s remaining` : 'expired';
+  const badge   = (n, warn) => `<span class="dbg-badge ${n > 0 && warn ? 'dbg-badge-warn' : 'dbg-badge-ok'}">${n}</span>`;
+
+  const pills = (arr, cls) => arr.length
+    ? arr.map(v => `<span class="dbg-pill ${cls}">${escHtml(String(v))}</span>`).join('')
+    : `<span class="dbg-ok">none ✓</span>`;
+
+  const row = (label, value) =>
+    `<div class="dbg-row"><span class="dbg-label">${label}</span><span class="dbg-value">${value}</span></div>`;
+
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="dbg-wrap">
+      <div class="dbg-title">🛠 Debug Panel <span class="dbg-title-note">?debug=true</span></div>
+
+      <div class="dbg-grid">
+
+        <section class="dbg-section">
+          <div class="dbg-section-title">ESPN Fetch</div>
+          ${row('Last fetch',   fmtTime(snap.fetchTimestamp))}
+          ${row('HTTP status',  snap.fetchStatus != null ? `<span class="dbg-value ${snap.fetchStatus === 200 ? 'dbg-ok' : 'dbg-err'}">${snap.fetchStatus}</span>` : '—')}
+          ${row('Source',       snap.fetchSource ?? '—')}
+          ${row('Raw events',   snap.rawEventCount ?? '—')}
+          ${row('Parsed OK',    snap.parsedCount   ?? '—')}
+          ${row('Skipped',      snap.skippedCount  ?? '—')}
+        </section>
+
+        <section class="dbg-section">
+          <div class="dbg-section-title">Cache</div>
+          ${row('localStorage fetchedAt', fmtTime(snap.localStorage?.fetchedAt))}
+          ${row('TTL live (5 min)',  fmtTtl(snap.localStorage?.ttlLiveMs))}
+          ${row('TTL idle (60 min)', fmtTtl(snap.localStorage?.ttlIdleMs))}
+          ${row('Gist last sync',    fmtTime(snap.gistSyncTimestamp))}
+        </section>
+
+        <section class="dbg-section dbg-section-full">
+          <div class="dbg-section-title">Unmapped Team Names ${badge(snap.unmappedTeams.length, true)}</div>
+          <div class="dbg-pills">${pills(snap.unmappedTeams, 'dbg-pill-warn')}</div>
+        </section>
+
+        <section class="dbg-section dbg-section-full">
+          <div class="dbg-section-title">Unmapped Round Slugs ${badge(snap.unmappedRounds.length, true)}</div>
+          <div class="dbg-pills">${pills(snap.unmappedRounds, 'dbg-pill-warn')}</div>
+        </section>
+
+      </div>
+    </div>
+  `;
+}
+
+// ── Utility ────────────────────────────────────────────────────────────────────
+
 function escHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
