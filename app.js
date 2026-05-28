@@ -318,7 +318,9 @@ function parseRound(slug) {
     case 'quarterfinals': return 'quarterfinal';
     case 'semifinals':    return 'semifinal';
     case 'final':         return 'final';
-    default:              return slug;
+    default:
+      if (slug) console.warn(`[parseRound] Unrecognized ESPN slug: "${slug}" — add to parseRound()`);
+      return slug;
   }
 }
 
