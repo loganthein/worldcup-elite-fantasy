@@ -39,24 +39,7 @@ function renderLeaderboard(scores, matches) {
     }
   }
 
-  // Compute biggest mover
-  let biggestMover = null, maxDelta = 0;
-  for (const entry of scores) {
-    const prev = _prevRanks[entry.name];
-    if (!prev) continue;
-    const rankDelta  = prev.rank - entry.rank;   // positive = moved up
-    const scoreDelta = entry.totalScore - prev.score;
-    if (rankDelta > maxDelta || (rankDelta === maxDelta && rankDelta > 0 && scoreDelta > (biggestMover?._scoreDelta ?? 0))) {
-      maxDelta = rankDelta;
-      biggestMover = { ...entry, _rankDelta: rankDelta, _scoreDelta: scoreDelta };
-    }
-  }
-
   const frag = document.createDocumentFragment();
-
-  if (biggestMover && maxDelta > 0) {
-    frag.appendChild(_buildBiggestMoverCard(biggestMover));
-  }
 
   for (const entry of scores) {
     frag.appendChild(_buildEntry(entry));
@@ -64,37 +47,6 @@ function renderLeaderboard(scores, matches) {
   container.appendChild(frag);
 
   _savePrevRanks(scores);
-}
-
-// ── Biggest Mover card ─────────────────────────────────────────────────────────
-
-function _buildBiggestMoverCard(entry) {
-  const color = (typeof OWNER_COLORS !== 'undefined' && OWNER_COLORS[entry.name]) || '#1a8a40';
-  const r = parseInt(color.slice(1,3), 16);
-  const g = parseInt(color.slice(3,5), 16);
-  const b = parseInt(color.slice(5,7), 16);
-
-  const teamsHtml = entry.teams
-    .map(t => `${flagImg(t)}\u202f${escHtml(t)}`)
-    .join('  ·  ');
-
-  const scoreLine = entry._scoreDelta > 0
-    ? `<span class="bm-score">+${entry._scoreDelta} pts</span>`
-    : '';
-
-  const el = document.createElement('div');
-  el.className = 'bm-card';
-  el.style.borderLeftColor = color;
-  el.style.background = `rgba(${r},${g},${b},0.06)`;
-
-  el.innerHTML = `
-    <span class="bm-label">Biggest Mover</span>
-    <span class="bm-delta">▲${entry._rankDelta}</span>
-    <span class="bm-name">${escHtml(entry.name)}</span>
-    <span class="bm-teams">${teamsHtml}</span>
-    ${scoreLine}
-  `;
-  return el;
 }
 
 // ── Entry builder ──────────────────────────────────────────────────────────────
