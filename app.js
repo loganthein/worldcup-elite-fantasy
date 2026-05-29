@@ -673,6 +673,89 @@ function determineGroupWinners(matches) {
   return winners;
 }
 
+// ── Max remaining points ───────────────────────────────────────────────────────
+
+/**
+ * Compute the maximum points a team can still earn from here.
+ * Assumes the team wins every remaining match.
+ * Returns 0 if the team is already eliminated.
+ */
+function _maxRemainingPts(teamName, matches, advancedTeams, groupWinners) {
+  const tier = scoringFor(teamName);
+
+  // Eliminated: lost a knockout match
+  for (const m of matches) {
+    if (!isFinished(m.status) || m.round === 'group') continue;
+    if (m.homeTeam !== teamName && m.awayTeam !== teamName) continue;
+    const myScore  = m.homeTeam === teamName ? m.homeScore : m.awayScore;
+    const oppScore = m.homeTeam === teamName ? m.awayScore : m.homeScore;
+    if (myScore < oppScore) return 0;
+  }
+
+  // Group counts
+  const groupPlayed = matches.filter(m =>
+    isFinished(m.status) && m.round === 'group' &&
+    (m.homeTeam === teamName || m.awayTeam === teamName)
+  ).length;
+  const groupNS = matches.filter(m =>
+    m.status === 'NS' && m.round === 'group' &&
+    (m.homeTeam === teamName || m.awayTeam === teamName)
+  ).length;
+  const groupDone = groupPlayed >= 3 && groupNS === 0;
+
+  // Eliminated: group done, didn't advance
+  if (groupDone && !advancedTeams.has(teamName)) return 0;
+
+  let max = 0;
+
+  // Remaining group wins (best case: win every one)
+  max += groupNS * tier.group_win;
+
+  // Unearned group bonuses
+  if (!advancedTeams.has(teamName)) {
+    // Could still advance + place 1st
+    max += tier.group_advance + tier.group_1st_bonus;
+  } else if (!groupWinners.has(teamName) && !groupDone) {
+    // Advanced, group not complete → could still finish 1st
+    max += tier.group_1st_bonus;
+  }
+
+  // Knockout remaining
+  // Find deepest round where team is still alive (NS/live match, or just won and next not scheduled yet)
+  const koOrder = ['round_of_32', 'round_of_16', 'quarterfinal', 'semifinal', 'final'];
+  let currentKoIdx = -1; // -1 = not in knockout yet
+
+  for (const m of matches) {
+    if (m.round === 'group') continue;
+    if (m.homeTeam !== teamName && m.awayTeam !== teamName) continue;
+    const idx = koOrder.indexOf(m.round);
+    if (idx < 0) continue;
+
+    if (m.status === 'NS' || isLive(m.status)) {
+      if (idx > currentKoIdx) currentKoIdx = idx;
+    } else if (isFinished(m.status)) {
+      const myScore  = m.homeTeam === teamName ? m.homeScore : m.awayScore;
+      const oppScore = m.homeTeam === teamName ? m.awayScore : m.homeScore;
+      if (myScore > oppScore && idx + 1 > currentKoIdx) currentKoIdx = idx + 1;
+    }
+  }
+
+  if (currentKoIdx < 0) {
+    // Not in knockout yet — if eligible, could win all rounds
+    if (advancedTeams.has(teamName) || !groupDone) {
+      for (const round of koOrder) max += tier[ROUND_SCORE_KEY[round]];
+    }
+  } else if (currentKoIdx < koOrder.length) {
+    // Add points for current and all remaining rounds
+    for (let i = currentKoIdx; i < koOrder.length; i++) {
+      max += tier[ROUND_SCORE_KEY[koOrder[i]]];
+    }
+  }
+  // currentKoIdx >= koOrder.length → won the final, nothing left
+
+  return max;
+}
+
 // ── Per-team scorer ────────────────────────────────────────────────────────────
 
 /**
@@ -815,8 +898,9 @@ function calculateScores(matches, standings = null) {
       totalWins += td.wins;
     }
 
-    const totalScore = Object.values(teamBreakdown).reduce((s, t) => s + t.total, 0);
-    const scoreHistory = _buildScoreHistory(teamNames, matches, advancedTeams, groupWinners);
+    const totalScore    = Object.values(teamBreakdown).reduce((s, t) => s + t.total, 0);
+    const maxRemaining  = teamNames.reduce((s, t) => s + _maxRemainingPts(t, matches, advancedTeams, groupWinners), 0);
+    const scoreHistory  = _buildScoreHistory(teamNames, matches, advancedTeams, groupWinners);
 
     // Same-group conflict flag (currently only possible for Logan: USA + Switzerland)
     const flags = [];
@@ -827,20 +911,24 @@ function calculateScores(matches, standings = null) {
       flags.push(`same-group conflict: ${t1} and ${t2} are both in Group ${g1}`);
     }
 
-    return { name, teams: teamNames, totalScore, teamBreakdown, scoreHistory, flags, _wins: totalWins };
+    return { name, teams: teamNames, totalScore, maxRemaining, teamBreakdown, scoreHistory, flags, _wins: totalWins };
   });
 
-  // Primary sort: totalScore desc. Tiebreak: total wins desc.
-  results.sort((a, b) => b.totalScore - a.totalScore || b._wins - a._wins);
+  // Primary sort: totalScore desc. Tiebreak: maxRemaining desc, then total wins desc.
+  results.sort((a, b) =>
+    b.totalScore - a.totalScore ||
+    b.maxRemaining - a.maxRemaining ||
+    b._wins - a._wins
+  );
 
-  // Assign ranks — tied entries share a rank; next rank skips accordingly
+  // Assign ranks — entries share a rank only when totalScore is identical
   let nextRank = 1;
   for (let i = 0; i < results.length; i++) {
     const prev = results[i - 1];
-    const tied = prev && prev.totalScore === results[i].totalScore && prev._wins === results[i]._wins;
+    const tied = prev && prev.totalScore === results[i].totalScore;
     results[i].rank = tied ? prev.rank : nextRank;
     nextRank++;
-    delete results[i]._wins; // remove internal sort field from output
+    delete results[i]._wins;
   }
 
   return results;

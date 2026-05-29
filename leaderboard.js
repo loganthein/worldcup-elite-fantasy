@@ -142,6 +142,7 @@ function _buildEntry(entry) {
       </div>
       <div class="lb-score-cell">
         <span class="lb-score" data-score="${entry.totalScore}">${entry.totalScore}</span>
+        ${entry.maxRemaining > 0 ? `<span class="lb-max-rem">+${entry.maxRemaining}</span>` : ''}
       </div>
       <button class="lb-toggle" aria-expanded="false"
               aria-label="Show score breakdown for ${escHtml(entry.name)}">›</button>

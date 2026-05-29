@@ -411,7 +411,7 @@ a:hover { color: var(--red); }
 }
 
 /* Score cell */
-.lb-score-cell { grid-area: score; text-align: right; }
+.lb-score-cell { grid-area: score; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 0; }
 
 .lb-score {
   display: block;
@@ -420,6 +420,15 @@ a:hover { color: var(--red); }
   line-height: 1;
   color: var(--text-1);
   letter-spacing: 0.03em;
+}
+
+.lb-max-rem {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+  line-height: 1.4;
 }
 
 @keyframes score-flash {
