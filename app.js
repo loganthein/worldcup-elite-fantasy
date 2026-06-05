@@ -18,7 +18,7 @@ const PARTICIPANTS = {
   Chad:     ['Japan',       'Egypt'],
   Jackie:   ['Morocco',     'Sweden'],
   Jake:     ['Argentina',   'Australia'],
-  Joren:    ['Norway',      'Scotland'],
+  Joren:    ['Norway',      'Ivory Coast'],
   Keillor:  ['France',      'Uruguay'],
   Kyle:     ['England',     'Senegal'],
   Logan:    ['USA',         'Switzerland'],
