@@ -364,6 +364,9 @@ function parseRound(slug) {
     case 'quarterfinals': return 'quarterfinal';
     case 'semifinals':    return 'semifinal';
     case 'final':         return 'final';
+    case '3rd-place-match':
+    case 'third-place':
+    case 'third-place-match': return 'third_place';
     default:
       if (slug) {
         console.warn(`[parseRound] Unrecognized ESPN slug: "${slug}" — add to parseRound()`);
@@ -385,10 +388,14 @@ function isLive(status)     { return LIVE_STATUSES.has(status); }
 
 function mapEspnStatus(espnName) {
   switch (espnName) {
-    case 'STATUS_SCHEDULED':   return 'NS';
-    case 'STATUS_IN_PROGRESS': return 'LIVE';
+    case 'STATUS_SCHEDULED':
+    case 'STATUS_PREGAME':     return 'NS';
+    case 'STATUS_IN_PROGRESS':
+    case 'STATUS_IN_PROGRESS_2': return 'LIVE';
     case 'STATUS_HALFTIME':    return 'HT';
-    case 'STATUS_FINAL':       return 'FT';
+    case 'STATUS_FINAL':
+    case 'STATUS_FULL_TIME':
+    case 'STATUS_FT':          return 'FT';
     case 'STATUS_FINAL_AET':   return 'AET';
     case 'STATUS_FINAL_PEN':   return 'PEN';
     case 'STATUS_POSTPONED':   return 'PST';
@@ -500,7 +507,10 @@ class DataLayer {
 
       const st     = comp.status.type;
       const isPre  = st.state === 'pre';
-      const status = mapEspnStatus(st.name);
+      // Use st.state as ground truth if the name string doesn't map to a known status
+      let status = mapEspnStatus(st.name);
+      if (st.state === 'post' && !isFinished(status)) status = 'FT';
+      else if (st.state === 'in' && !isLive(status)) status = 'LIVE';
 
       // Parse elapsed minutes from displayClock (e.g. "45'" → 45)
       const clockStr = comp.status.displayClock || '';
@@ -1011,6 +1021,12 @@ class ScoringEngine {
       this._matches   = [];
       this._standings = null;
       this._data.source = 'error';
+    }
+
+    // Hide the pre-tournament countdown once any match has kicked off
+    if (this._matches.some(m => m.status !== 'NS')) {
+      const countdownBanner = document.getElementById('tournament-countdown');
+      if (countdownBanner) countdownBanner.hidden = true;
     }
 
     this._updateHeader();
